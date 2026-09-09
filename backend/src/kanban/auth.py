@@ -38,7 +38,7 @@ def get_current_user(request: Request) -> dict:
     return store.users[user_id]
 
 
-def seed_default_board(user_id: str, name: str) -> None:
+def seed_default_board(user_id: str, name: str) -> str:
     import uuid
 
     board_id = str(uuid.uuid4())
@@ -59,3 +59,4 @@ def seed_default_board(user_id: str, name: str) -> None:
             "order": order,
         }
         order = append_order([c["order"] for c in store.columns_for_board(board_id)])
+    return board_id

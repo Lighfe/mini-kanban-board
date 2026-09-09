@@ -1,4 +1,4 @@
-from conftest import signup
+from tests.conftest import signup
 
 
 def test_signup_creates_a_session_cookie_and_returns_the_user(client):
