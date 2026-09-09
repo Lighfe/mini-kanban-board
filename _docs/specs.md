@@ -70,9 +70,14 @@ either view or edit access.
   the Done column ("Archive all in Done").
 - Archived cards are hidden from the board and are only visible in a
   dedicated archive view.
+- From the archive view, an archived task can be restored back onto the
+  board, landing at the end of the column it was archived from (or the
+  end of Backlog if that column no longer exists, e.g. it was since
+  deleted). Restoring is available to owners and editors, same as
+  archiving; viewers cannot restore.
 - From the archive view, only the owner can permanently delete a task.
-  This is irreversible. Editors can archive tasks but cannot permanently
-  delete them.
+  This is irreversible. Editors can archive and restore tasks but
+  cannot permanently delete them.
 
 ## Sharing & Permissions
 
@@ -151,4 +156,3 @@ either view or edit access.
   described above).
 - Email verification, password reset, and account roles beyond board
   membership.
-- Archived-task restoration back onto the board.

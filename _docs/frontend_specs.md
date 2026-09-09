@@ -91,11 +91,12 @@ module.
   created or renamed to "Done").
 - **Archive view** (per board): lists archived tasks; clicking one opens
   it read-only (same editor UI as the board's card editor, but never
-  showing a save action, since archived tasks aren't editable). Only the
-  owner can permanently delete a task from here (irreversible, no
-  restore — restoring an archived task to the board is out of scope).
-  Editors can view the list but cannot delete. Viewers can also view but
-  not delete.
+  showing a save action, since archived tasks aren't editable). Owners
+  and editors can restore a task back onto the board (appended to the
+  end of the column it was archived from, or the end of Backlog if that
+  column has since been deleted) or permanently delete it — restore is
+  reversible, permanent delete is not and is owner-only. Viewers can
+  view the list but cannot restore or delete.
 - **Board settings** (owner only): rename or delete the board (delete
   requires confirmation and explains the cascade), member list with
   per-member role change and remove, share-link list (create new
@@ -147,5 +148,4 @@ module.
 - Any real backend, network calls, or persistence beyond in-memory mock
   state (resets on reload).
 - Real authentication (session/password handling, verification, reset).
-- Real-time multi-user sync and restoring an archived task back onto the
-  board — both out of scope per specs.md.
+- Real-time multi-user sync — out of scope per specs.md.
