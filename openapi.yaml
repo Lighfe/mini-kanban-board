@@ -405,8 +405,10 @@ paths:
       summary: Restore an archived task back onto its original column.
       description: |
         Requires the `editor` role or higher. Kept for data-model
-        completeness; there is currently no UI surface for it
-        (restoration is out of scope for v1 per `_docs/specs.md`).
+        completeness; there is currently no UI surface for it (the archive
+        view's restore action uses `restoreTask` instead). Falls back to
+        the board's "Backlog" column if the original column no longer
+        exists, same as `restoreTask`.
       tags: [Tasks]
       responses:
         "200":
@@ -418,7 +420,7 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409":
-          description: The task's original column no longer exists.
+          description: Neither the task's original column nor a "Backlog" column exists.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
