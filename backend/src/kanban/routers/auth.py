@@ -1,3 +1,4 @@
+import os
 import uuid
 from datetime import datetime, timezone
 
@@ -10,6 +11,16 @@ from kanban.schemas import User
 from kanban.store import store
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
+
+# Secure by default (session cookie only sent back over HTTPS). Local dev
+# and the test suite talk to a plain-HTTP origin (uvicorn on localhost, or
+# TestClient's http://testserver), where a Secure cookie either wouldn't be
+# sent over the wire in real deployment terms, or — worse for tests — some
+# HTTP client cookie-jars refuse to persist/send a Secure cookie against a
+# non-HTTPS test origin, silently breaking session-dependent tests. Read
+# once at import time; tests/conftest.py sets this env var to "false"
+# before the app is imported.
+SECURE_COOKIES = os.environ.get("KANBAN_SECURE_COOKIES", "true").lower() != "false"
 
 
 class SignupRequest(BaseModel):
@@ -25,7 +36,7 @@ class SigninRequest(BaseModel):
 
 def _set_session_cookie(response: Response, user_id: str) -> None:
     token = create_session(user_id)
-    response.set_cookie(SESSION_COOKIE, token, httponly=True, samesite="lax")
+    response.set_cookie(SESSION_COOKIE, token, httponly=True, samesite="lax", secure=SECURE_COOKIES)
 
 
 @router.post("/signup", status_code=201, response_model=User)

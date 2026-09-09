@@ -1,3 +1,12 @@
+import os
+
+# Must be set before kanban.main / kanban.routers.auth are imported: the
+# session cookie is Secure by default, but TestClient talks to plain-HTTP
+# http://testserver, and some HTTP client cookie-jars refuse to send a
+# Secure cookie back to a non-HTTPS origin — which would silently break
+# every session-dependent test.
+os.environ.setdefault("KANBAN_SECURE_COOKIES", "false")
+
 import pytest
 from fastapi.testclient import TestClient
 
