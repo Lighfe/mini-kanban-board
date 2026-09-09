@@ -1,4 +1,4 @@
-from kanban.ordering import append_order, needs_respacing, order_between, respaced_values
+from kanban.ordering import FRONT_BOUNDARY_FLOOR, append_order, needs_respacing, order_between, respaced_values
 
 
 def test_append_order_on_empty_list_returns_first_gap_value():
@@ -36,6 +36,31 @@ def test_needs_respacing_is_true_when_neighbors_are_too_close_to_split():
 def test_needs_respacing_is_false_at_either_open_end():
     assert needs_respacing(None, 1000.0) is False
     assert needs_respacing(1000.0, None) is False
+
+
+def test_needs_respacing_is_false_when_both_neighbors_are_none():
+    assert needs_respacing(None, None) is False
+
+
+def test_needs_respacing_is_true_when_front_insert_value_has_fallen_below_the_floor():
+    # Repeated front-inserts halve `order_between(None, after)` towards 0.0
+    # forever unless something resets the scale. Below FRONT_BOUNDARY_FLOOR
+    # we must trigger a respace well before float precision is actually lost.
+    assert needs_respacing(None, FRONT_BOUNDARY_FLOOR - 0.0001) is True
+    assert needs_respacing(None, 0.5) is True
+
+
+def test_needs_respacing_is_false_at_or_above_the_front_boundary_floor():
+    assert needs_respacing(None, FRONT_BOUNDARY_FLOOR) is False
+    assert needs_respacing(None, FRONT_BOUNDARY_FLOOR + 0.0001) is False
+
+
+def test_needs_respacing_append_only_case_is_unaffected_by_the_floor():
+    # The after-is-None (append, unbounded growth) case has no realistic
+    # precision problem the way approaching zero does, so it must never
+    # trigger respacing regardless of magnitude.
+    assert needs_respacing(1000.0, None) is False
+    assert needs_respacing(0.0000001, None) is False
 
 
 def test_respaced_values_returns_round_multiples_of_the_gap():

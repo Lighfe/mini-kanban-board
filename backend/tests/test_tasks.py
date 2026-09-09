@@ -232,6 +232,46 @@ def test_move_task_respacing_never_produces_duplicate_orders_at_front(client):
     )
     assert response.status_code == 200
 
+
+def test_move_task_to_front_respaces_before_the_front_order_underflows(client):
+    """Repeatedly moving a task to the front of its column halves
+    order_between(None, after) towards 0.0 forever unless something resets
+    the scale. Rather than looping 1000+ times to reach the actual float
+    underflow, directly construct a task sitting just below the new
+    FRONT_BOUNDARY_FLOOR (as if it had already been front-inserted many
+    times) and verify one more front-move triggers a full respace instead
+    of continuing to halve towards a collision."""
+    board_id, columns = setup_board(client)
+    backlog = columns["Backlog"]
+
+    t1 = client.post(f"/api/boards/{board_id}/columns/{backlog}/tasks", json={"title": "A"}).json()
+    t2 = client.post(f"/api/boards/{board_id}/columns/{backlog}/tasks", json={"title": "B"}).json()
+
+    from kanban.store import store
+
+    # Simulate many prior front-inserts: t1 already sits well below the
+    # FRONT_BOUNDARY_FLOOR (1.0).
+    store.tasks[t1["id"]]["order"] = 0.5
+    store.tasks[t2["id"]]["order"] = 1000.5
+
+    response = client.post(
+        f"/api/boards/{board_id}/tasks/{t2['id']}/move",
+        json={"toColumnId": backlog, "toIndex": 0},
+    )
+    assert response.status_code == 200
+
+    board_contents = client.get(f"/api/boards/{board_id}").json()
+    backlog_tasks = sorted(
+        (t for t in board_contents["tasks"] if t["columnId"] == backlog),
+        key=lambda t: t["order"],
+    )
+    orders = [t["order"] for t in backlog_tasks]
+    assert len(orders) == len(set(orders)), f"duplicate order values found: {orders}"
+
+    # A respace must have actually happened: both tasks should have been
+    # reset to round GAP-multiple values, not just a naive halving of 0.5.
+    assert orders == [1000.0, 2000.0]
+
     # Now move a task to the very front again.
     response = client.post(
         f"/api/boards/{board_id}/tasks/{t2['id']}/move",
