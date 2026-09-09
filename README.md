@@ -6,6 +6,15 @@ for collaborative work.
 
 See [_docs/specs.md](_docs/specs.md) for the full design spec.
 
+## Frontend
+
+[frontend/](frontend/) is a git submodule tracking a Lovable-managed
+project ([board-buddy](https://github.com/Lighfe/board-buddy)) and is
+built against a fully mocked backend — see
+[_docs/frontend_specs.md](_docs/frontend_specs.md). Changes to it go
+through Lovable, not local edits; run `git submodule update --remote
+frontend` to pull the latest.
+
 ## Status
 
-Design phase — implementation not started yet.
+Frontend built against a mocked backend. Real backend not started yet.
