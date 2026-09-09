@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, field_validator
 
 from kanban.auth import get_current_user, seed_default_board
+from kanban.errors import ApiError
 from kanban.permissions import get_member_or_404_403, require_role_or_403
-from kanban.schemas import Board, BoardContents, BoardSummary
+from kanban.schemas import Board, BoardContents, BoardMemberDetail, BoardSummary
 from kanban.store import store
 
 router = APIRouter(prefix="/api/boards", tags=["Boards"])
@@ -70,3 +71,22 @@ def delete_board(boardId: str, current_user: dict = Depends(get_current_user)) -
     for link_id in [l["id"] for l in store.share_links.values() if l["boardId"] == boardId]:
         del store.share_links[link_id]
     del store.boards[boardId]
+
+
+class TransferOwnershipBody(BaseModel):
+    toUserId: str
+
+
+@router.post("/{boardId}/transfer-ownership", response_model=list[BoardMemberDetail])
+def transfer_ownership(
+    boardId: str, body: TransferOwnershipBody, current_user: dict = Depends(get_current_user)
+) -> list[dict]:
+    board, current_owner_member = require_role_or_403(boardId, current_user["id"], "owner")
+    target_member = store.member_for(boardId, body.toUserId)
+    if not target_member:
+        raise ApiError(400, "Target user is not a member of this board")
+    current_owner_member["role"] = "editor"
+    target_member["role"] = "owner"
+    return [
+        {**m, "user": store.users[m["userId"]]} for m in store.members_for_board(boardId)
+    ]

@@ -58,3 +58,19 @@ def test_delete_board_cascades_columns_and_tasks(client):
     response = client.delete(f"/api/boards/{board_id}")
     assert response.status_code == 204
     assert client.get(f"/api/boards/{board_id}").status_code == 404
+
+
+def test_transfer_ownership_rejects_unknown_target_user(client):
+    signup(client)
+    board_id = client.get("/api/boards").json()[0]["id"]
+    response = client.post(f"/api/boards/{board_id}/transfer-ownership", json={"toUserId": "nope"})
+    assert response.status_code == 400
+
+
+def test_transfer_ownership_requires_owner_role(client):
+    signup(client)
+    board_id = client.get("/api/boards").json()[0]["id"]
+    bob_response = create_second_user(client)
+    client.post("/api/boards/does-not-matter")  # noop, keeps client on bob's session
+    response = client.post(f"/api/boards/{board_id}/transfer-ownership", json={"toUserId": bob_response["id"]})
+    assert response.status_code in (403, 404)
