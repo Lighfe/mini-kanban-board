@@ -9,6 +9,17 @@ def setup_board(client):
     return board_id, by_name
 
 
+def add_second_user_as_editor(client, board_id):
+    """Create a share link, redeem it as a second user (Bob), and switch the
+    client's session to Bob so subsequent requests act as a non-owner editor
+    member of the board. Returns Bob's user dict."""
+    link = client.post(f"/api/boards/{board_id}/share-links", json={"role": "editor"}).json()
+    client.cookies.clear()
+    bob = signup(client, email="bob@example.com", name="Bob", password="pw")
+    client.post("/api/share-links/redeem", json={"token": link["token"]})
+    return bob
+
+
 def test_create_task_defaults_priority_to_medium_and_appends_to_column(client):
     board_id, columns = setup_board(client)
     response = client.post(f"/api/boards/{board_id}/columns/{columns['Backlog']}/tasks", json={"title": "Write tests"})
@@ -40,6 +51,33 @@ def test_update_task_only_changes_provided_fields(client):
     updated = response.json()
     assert updated["title"] == "Original"
     assert updated["priority"] == "High"
+
+
+def test_update_task_explicit_null_title_returns_400(client):
+    board_id, columns = setup_board(client)
+    task = client.post(f"/api/boards/{board_id}/columns/{columns['Backlog']}/tasks", json={"title": "Original"}).json()
+    response = client.patch(f"/api/boards/{board_id}/tasks/{task['id']}", json={"title": None})
+    assert response.status_code == 400
+
+
+def test_update_task_explicit_null_due_date_clears_it(client):
+    board_id, columns = setup_board(client)
+    task = client.post(
+        f"/api/boards/{board_id}/columns/{columns['Backlog']}/tasks",
+        json={"title": "Original", "dueDate": "2026-01-01"},
+    ).json()
+    assert task["dueDate"] == "2026-01-01"
+
+    response = client.patch(f"/api/boards/{board_id}/tasks/{task['id']}", json={"dueDate": None})
+    assert response.status_code == 200
+    assert response.json()["dueDate"] is None
+
+
+def test_update_task_blank_title_returns_400(client):
+    board_id, columns = setup_board(client)
+    task = client.post(f"/api/boards/{board_id}/columns/{columns['Backlog']}/tasks", json={"title": "Original"}).json()
+    response = client.patch(f"/api/boards/{board_id}/tasks/{task['id']}", json={"title": "   "})
+    assert response.status_code == 400
 
 
 def test_move_task_sets_column_and_reorders(client):
@@ -129,6 +167,17 @@ def test_delete_task_permanently_requires_owner_and_archived_state(client):
 
     board_contents = client.get(f"/api/boards/{board_id}/archived-tasks").json()
     assert board_contents == []
+
+
+def test_delete_task_permanently_non_owner_gets_403(client):
+    board_id, columns = setup_board(client)
+    task = client.post(f"/api/boards/{board_id}/columns/{columns['Backlog']}/tasks", json={"title": "T"}).json()
+    client.post(f"/api/boards/{board_id}/tasks/{task['id']}/archive")
+
+    add_second_user_as_editor(client, board_id)
+
+    response = client.delete(f"/api/boards/{board_id}/tasks/{task['id']}")
+    assert response.status_code == 403
 
 
 def test_archive_all_in_done_archives_only_done_column_tasks(client):

@@ -34,6 +34,20 @@ class UpdateTaskBody(BaseModel):
     dueDate: date | None = None
     priority: Priority | None = None
 
+    @field_validator("title", "description", "priority", mode="before")
+    @classmethod
+    def reject_null(cls, value):
+        if value is None:
+            raise ValueError("must not be null")
+        return value
+
+    @field_validator("title", mode="after")
+    @classmethod
+    def not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("title must not be blank")
+        return value
+
 
 class MoveTaskBody(BaseModel):
     toColumnId: str

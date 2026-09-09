@@ -62,7 +62,7 @@ def rename_board(boardId: str, body: NameBody, current_user: dict = Depends(get_
 def delete_board(boardId: str, current_user: dict = Depends(get_current_user)) -> None:
     require_role_or_403(boardId, current_user["id"], "owner")
     column_ids = {c["id"] for c in store.columns.values() if c["boardId"] == boardId}
-    for task_id in [t["id"] for t in store.tasks.values() if t["columnId"] in column_ids]:
+    for task_id in [t["id"] for t in store.tasks.values() if t["boardId"] == boardId]:
         del store.tasks[task_id]
     for column_id in list(column_ids):
         del store.columns[column_id]
