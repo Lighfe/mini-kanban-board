@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
 from kanban.errors import register_exception_handlers
-from kanban.routers import auth, boards, columns, tasks, users
+from kanban.routers import auth, boards, columns, members, tasks, users
 
 app = FastAPI(title="Mini Kanban Board API")
 register_exception_handlers(app)
@@ -9,6 +9,7 @@ register_exception_handlers(app)
 app.include_router(auth.router)
 app.include_router(boards.router)
 app.include_router(columns.router)
+app.include_router(members.router)
 app.include_router(tasks.router)
 app.include_router(users.router)
 
