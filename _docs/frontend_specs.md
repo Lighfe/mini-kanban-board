@@ -1,7 +1,7 @@
 # Mini Kanban Board — Frontend Spec (Lovable, mocked backend)
 
 This spec describes the frontend-only build for Lovable. It implements the
-UI and interactions from [_docs/specs.md](_docs/specs.md) against a fully
+UI and interactions from [specs.md](specs.md) against a fully
 mocked backend — **no real backend, network calls, or persistence in this
 pass.** Every "backend" behavior described below lives behind one module so
 a real API can be swapped in later without touching UI code.
@@ -29,7 +29,7 @@ React + TypeScript + Tailwind + shadcn/ui.
   so permission logic isn't duplicated between the UI and a future
   backend.
 - The mock client's data shapes are the frontend's own DTOs, not a literal
-  copy of the backend data model in [_docs/specs.md](_docs/specs.md) —
+  copy of the backend data model in [specs.md](specs.md) —
   e.g. no `passwordHash` ever appears in anything the UI receives.
 
 ### Seed data
@@ -51,7 +51,7 @@ React + TypeScript + Tailwind + shadcn/ui.
 
 ## Data model (mock)
 
-TypeScript types mirroring the entities in [_docs/specs.md](_docs/specs.md)
+TypeScript types mirroring the entities in [specs.md](specs.md)
 (`Board`, `BoardMember`, `ShareLink`, `Column`, `Task`, plus `role` and
 `priority` enums), minus backend-only fields like `passwordHash`. Task and
 column `order` use the midpoint-insert-with-round-number-respace scheme
