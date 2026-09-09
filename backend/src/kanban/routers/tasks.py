@@ -111,6 +111,8 @@ def move_task(
 ) -> dict:
     require_role_or_403(boardId, current_user["id"], "editor")
     task = _get_task_or_404(boardId, taskId)
+    if task["archived"]:
+        raise ApiError(400, "Cannot move an archived task")
     _get_column_or_404(boardId, body.toColumnId)
 
     siblings = [t for t in store.tasks_for_column(body.toColumnId) if t["id"] != taskId]

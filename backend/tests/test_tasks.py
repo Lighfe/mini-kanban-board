@@ -54,6 +54,18 @@ def test_move_task_sets_column_and_reorders(client):
     assert moved["columnId"] == columns["Doing"]
 
 
+def test_move_archived_task_returns_400(client):
+    board_id, columns = setup_board(client)
+    task = client.post(f"/api/boards/{board_id}/columns/{columns['Backlog']}/tasks", json={"title": "T"}).json()
+    client.post(f"/api/boards/{board_id}/tasks/{task['id']}/archive")
+
+    response = client.post(
+        f"/api/boards/{board_id}/tasks/{task['id']}/move",
+        json={"toColumnId": columns["Doing"], "toIndex": 0},
+    )
+    assert response.status_code == 400
+
+
 def test_archive_and_unarchive_task_roundtrip(client):
     board_id, columns = setup_board(client)
     task = client.post(f"/api/boards/{board_id}/columns/{columns['Backlog']}/tasks", json={"title": "T"}).json()
