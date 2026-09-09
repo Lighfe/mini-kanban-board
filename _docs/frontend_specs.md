@@ -15,7 +15,8 @@ React + TypeScript + Tailwind + shadcn/ui.
 - A single module, `src/api/mockClient.ts`, is the *only* place that knows
   about backend operations. Every board/column/task/sharing action the UI
   needs is one async function here (e.g. `listBoards()`, `createBoard()`,
-  `moveTask()`, `createColumn()`, `deleteColumn()`, `archiveTask()`,
+  `moveTask()`, `createColumn()`, `deleteColumn()`, `reorderColumn()`,
+  `archiveTask()`, `deleteTaskPermanently()`,
   `createShareLink()`, `revokeShareLink()`, `redeemShareLink()`,
   `updateMemberRole()`, `removeMember()`, `transferOwnership()`). No
   component reads or writes mock state directly — everything goes through
@@ -71,7 +72,9 @@ module.
   or gating.
 - **Board switcher**: lists every board the current user is a member of
   (owned or shared), plus "+ New board".
-- **Board view**: columns rendered left-to-right in order; a "+ New
+- **Board view**: columns rendered left-to-right in order, and
+  reorderable by dragging (Owner/Editor only; the Done column always
+  stays rightmost and cannot be dragged out of that position); a "+ New
   column" control appends a column to the end. The Done column shows an
   "Archive all in Done" action. Cards show title, priority indicator, and
   due date if set, with an overdue visual treatment per the rule below.
@@ -86,10 +89,13 @@ module.
   before archiving its tasks. The Done column has no rename/delete
   controls — its name is fixed and protected (no other column can be
   created or renamed to "Done").
-- **Archive view** (per board): lists archived tasks; owners and editors
-  can permanently delete a task from here (irreversible, no restore —
-  restoring an archived task to the board is out of scope). Viewers can
-  view this list but cannot delete.
+- **Archive view** (per board): lists archived tasks; clicking one opens
+  it read-only (same editor UI as the board's card editor, but never
+  showing a save action, since archived tasks aren't editable). Only the
+  owner can permanently delete a task from here (irreversible, no
+  restore — restoring an archived task to the board is out of scope).
+  Editors can view the list but cannot delete. Viewers can also view but
+  not delete.
 - **Board settings** (owner only): rename or delete the board (delete
   requires confirmation and explains the cascade), member list with
   per-member role change and remove, share-link list (create new
@@ -112,7 +118,10 @@ module.
 - **Drag and drop**: cards can be dragged between and within columns for
   the Owner/Editor simulated role; disabled (static cards) for Viewer.
   Dropping sets the task's `columnId` and recomputes `order` via the
-  midpoint/re-spacing scheme in the mock client.
+  midpoint/re-spacing scheme in the mock client. Columns can likewise be
+  dragged to reorder them (Owner/Editor only), using the same
+  midpoint/re-spacing scheme on the column's `order`; the Done column
+  cannot be dragged and always stays rightmost.
 - **Overdue**: a card is shown as overdue when today's calendar date is
   after its `dueDate` (date-only comparison, no time-of-day/UTC math),
   it's not archived, and it's not in the Done column.
@@ -128,14 +137,15 @@ module.
   their own access or leave the board without transferring or deleting
   it first.
 - **Permissions**: Viewer is read-only everywhere (no create/edit/move/
-  archive/delete, no drag) and cannot access board settings. Editor can
-  do all board content actions but not manage members, links, deletion,
-  or ownership transfer. Owner can do everything.
+  archive/delete, no drag, no column reorder) and cannot access board
+  settings. Editor can do all board content actions, including column
+  reorder, but cannot permanently delete an archived task and cannot
+  manage members, links, board deletion, or ownership transfer. Owner can do everything.
 
 ## Explicitly out of scope for this pass
 
 - Any real backend, network calls, or persistence beyond in-memory mock
   state (resets on reload).
 - Real authentication (session/password handling, verification, reset).
-- Column reordering, real-time multi-user sync, and restoring an archived
-  task back onto the board — all out of scope per specs.md.
+- Real-time multi-user sync and restoring an archived task back onto the
+  board — both out of scope per specs.md.

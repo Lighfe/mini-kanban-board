@@ -51,8 +51,11 @@ either view or edit access.
 - A non-Done column can be deleted. If it contains tasks, deletion
   requires confirmation; on confirmation, its tasks are archived (not
   hard-deleted).
-- Columns are not user-reorderable in this version — new columns always
-  append to the end.
+- Columns can be reordered by dragging, using the same sortable `order`
+  scheme as task ordering (see Drag and Drop). The Done column keeps its
+  existing rename/delete protection and additionally cannot be dragged
+  out of the last position — it always stays rightmost regardless of how
+  other columns are reordered.
 
 ## Cards (Tasks)
 
@@ -67,16 +70,18 @@ either view or edit access.
   the Done column ("Archive all in Done").
 - Archived cards are hidden from the board and are only visible in a
   dedicated archive view.
-- From the archive view, owners and editors can permanently delete a
-  task. This is irreversible.
+- From the archive view, only the owner can permanently delete a task.
+  This is irreversible. Editors can archive tasks but cannot permanently
+  delete them.
 
 ## Sharing & Permissions
 
-- Roles: **owner** (full control, including membership, share links, and
-  board deletion/ownership transfer), **editor** (create/edit/move/
-  archive/permanently-delete cards, create/rename/delete columns other
-  than Done), and **viewer** (read-only: can view the board and archive,
-  cannot perform any write action).
+- Roles: **owner** (full control, including membership, share links,
+  board deletion/ownership transfer, and permanently deleting archived
+  cards), **editor** (create/edit/move/archive cards, create/rename/
+  delete/reorder columns other than Done — but cannot permanently delete
+  an archived card), and **viewer** (read-only: can view the board and
+  archive, cannot perform any write action).
 - A board owner generates a share link scoped to a role (view or edit)
   from the board's settings. A board may have multiple active links at
   once, each independently revocable.
@@ -94,9 +99,10 @@ either view or edit access.
   reusing a link the owner has not explicitly reissued. The owner
   generates a new link to reshare.
 - Viewers cannot edit, move, archive, permanently delete, or create cards
-  or columns, and cannot drag cards. Editors can perform all board
-  content actions but cannot manage members, share links, board deletion,
-  or ownership transfer.
+  or columns, and cannot drag cards or reorder columns. Editors can
+  perform all board content actions, including reordering columns, but
+  cannot permanently delete an archived card and cannot manage members,
+  share links, board deletion, or ownership transfer.
 
 ## Drag and Drop
 
@@ -107,9 +113,11 @@ either view or edit access.
   move only touches the moved row. When neighboring values are too close
   to split further, the column's cards are re-spaced to round numbers
   (0, 1000, 2000, ...) as a lazy cleanup on that write. The same scheme
-  is used for column ordering on a board.
+  is used for column ordering on a board, including when columns are
+  dragged to reorder them (subject to the Done column always staying
+  last, per the Columns section).
 - Drag-and-drop is available to owners and editors; viewers see static,
-  non-draggable cards.
+  non-draggable cards and cannot reorder columns.
 
 ## Authentication
 
@@ -138,7 +146,6 @@ either view or edit access.
 
 ## Out of Scope (v1)
 
-- Column reordering.
 - Anonymous (non-authenticated) board access.
 - Real-time multi-user sync (concurrent edits use last-write-wins as
   described above).
