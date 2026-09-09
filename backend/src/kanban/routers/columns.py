@@ -5,7 +5,7 @@ from pydantic import BaseModel, field_validator
 
 from kanban.auth import get_current_user
 from kanban.errors import ApiError
-from kanban.ordering import append_order, needs_respacing, order_between, respaced_values
+from kanban.ordering import GAP, append_order, needs_respacing, order_between, respaced_values
 from kanban.permissions import require_role_or_403
 from kanban.schemas import Column
 from kanban.store import store
@@ -45,7 +45,7 @@ def create_column(boardId: str, body: NameBody, current_user: dict = Depends(get
     before_done = [c for c in columns if c["id"] != done["id"]]
     order = order_between(before_done[-1]["order"] if before_done else None, done["order"])
     if needs_respacing(before_done[-1]["order"] if before_done else None, done["order"]):
-        _respace_columns(boardId, columns, insert_before_done=True)
+        _respace_columns(boardId, columns)
         columns = store.columns_for_board(boardId)
         done = next(c for c in columns if c["name"] == "Done")
         before_done = [c for c in columns if c["id"] != done["id"]]
@@ -55,13 +55,25 @@ def create_column(boardId: str, body: NameBody, current_user: dict = Depends(get
     return store.columns[column_id]
 
 
-def _respace_columns(board_id: str, columns: list[dict], *, insert_before_done: bool) -> None:
-    non_done = [c for c in columns if c["name"] != "Done"]
-    done = next(c for c in columns if c["name"] == "Done")
-    slots = respaced_values(len(non_done) + 1)
+def _respace_columns(board_id: str, columns_in_order: list[dict]) -> None:
+    """Reassign evenly-spaced `order` values to every column on a board,
+    given `columns_in_order` already in the desired final order (Done last,
+    or anywhere — it is located by name, not position).
+
+    The slots are shifted up by one GAP so the first non-"Done" column never
+    lands on 0.0: `respaced_values(n)` starts at 0.0, and a bare 0.0 order
+    collides exactly with `order_between(None, 0.0) == 0.0` on the next
+    "move to front" reorder, silently re-creating the ordering bug fixed in
+    `auth.py`'s board seeding. Shifting by GAP keeps every slot strictly
+    positive, so `order_between(None, first_slot)` always yields a smaller,
+    distinct value.
+    """
+    non_done = [c for c in columns_in_order if c["name"] != "Done"]
+    done = next(c for c in columns_in_order if c["name"] == "Done")
+    slots = [value + GAP for value in respaced_values(len(non_done) + 1)]
     for column, value in zip(non_done, slots):
         column["order"] = value
-    done["order"] = slots[-1] + 1000.0
+    done["order"] = slots[-1] + GAP
 
 
 @router.patch("/{columnId}", response_model=Column)
@@ -107,10 +119,7 @@ def reorder_column(
     before = non_done[target_index - 1]["order"] if target_index > 0 else None
     after = non_done[target_index + 1]["order"] if target_index + 1 < len(non_done) else done["order"]
     if needs_respacing(before, after):
-        slots = respaced_values(len(non_done) + 1)
-        for c, value in zip(non_done, slots):
-            c["order"] = value
-        done["order"] = slots[-1] + 1000.0
+        _respace_columns(boardId, [*non_done, done])
     else:
         column["order"] = order_between(before, after)
 

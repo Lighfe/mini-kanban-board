@@ -1,3 +1,5 @@
+from kanban.ordering import MIN_GAP
+from kanban.store import store
 from tests.conftest import signup
 
 
@@ -78,6 +80,38 @@ def test_reorder_column_cannot_move_done_or_move_past_it(client):
     response = client.post(f"/api/boards/{board_id}/columns/{backlog_id}/reorder", json={"index": 3})
     ordered_names = [c["name"] for c in response.json()]
     assert ordered_names[-1] == "Done"
+
+
+def test_respace_then_front_reorder_produces_no_collisions(client):
+    board_id, columns = get_board_and_columns(client)
+    backlog_id = next(c["id"] for c in columns if c["name"] == "Backlog")
+    today_id = next(c["id"] for c in columns if c["name"] == "Today")
+    doing_id = next(c["id"] for c in columns if c["name"] == "Doing")
+
+    # Force Backlog and Today so close together that inserting Doing between
+    # them requires respacing (needs_respacing must return True here).
+    store.columns[backlog_id]["order"] = 1000.0
+    store.columns[today_id]["order"] = 1000.0 + (MIN_GAP / 2)
+
+    response = client.post(f"/api/boards/{board_id}/columns/{doing_id}/reorder", json={"index": 1})
+    assert response.status_code == 200
+    respaced = response.json()
+    orders = [c["order"] for c in respaced]
+    assert orders == sorted(orders)
+    assert len(set(orders)) == len(orders)  # no collisions after respacing
+    assert orders[0] > 0  # first column must not collapse to 0.0
+    assert respaced[-1]["name"] == "Done"
+
+    # Move the second column to the front. This exercises
+    # order_between(None, first_column_order) against the freshly respaced
+    # first column and must still not collide with it.
+    second_column_id = respaced[1]["id"]
+    response2 = client.post(f"/api/boards/{board_id}/columns/{second_column_id}/reorder", json={"index": 0})
+    assert response2.status_code == 200
+    final_orders = [c["order"] for c in response2.json()]
+    assert final_orders == sorted(final_orders)
+    assert len(set(final_orders)) == len(final_orders)  # still no collisions
+    assert final_orders[0] > 0
 
 
 def test_column_routes_require_editor_role_or_higher(client):
