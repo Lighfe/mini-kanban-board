@@ -74,3 +74,22 @@ def test_transfer_ownership_requires_owner_role(client):
     client.post("/api/boards/does-not-matter")  # noop, keeps client on bob's session
     response = client.post(f"/api/boards/{board_id}/transfer-ownership", json={"toUserId": bob_response["id"]})
     assert response.status_code in (403, 404)
+
+
+def test_transfer_ownership_promotes_target_and_demotes_current_owner(client):
+    signup(client)
+    owner_id = client.get("/api/me").json()["id"]
+    board_id = client.get("/api/boards").json()[0]["id"]
+    link = client.post(f"/api/boards/{board_id}/share-links", json={"role": "editor"}).json()
+
+    client.cookies.clear()
+    bob = signup(client, email="bob@example.com", name="Bob", password="pw")
+    client.post("/api/share-links/redeem", json={"token": link["token"]})
+
+    client.cookies.clear()
+    client.post("/api/auth/signin", json={"email": "alice@example.com", "password": "hunter2"})
+    response = client.post(f"/api/boards/{board_id}/transfer-ownership", json={"toUserId": bob["id"]})
+    assert response.status_code == 200
+    roles = {m["userId"]: m["role"] for m in response.json()}
+    assert roles[bob["id"]] == "owner"
+    assert roles[owner_id] == "editor"
