@@ -1,6 +1,13 @@
 from fastapi import FastAPI
 
+from kanban.errors import register_exception_handlers
+from kanban.routers import auth, users
+
 app = FastAPI(title="Mini Kanban Board API")
+register_exception_handlers(app)
+
+app.include_router(auth.router)
+app.include_router(users.router)
 
 
 @app.get("/api/health")
