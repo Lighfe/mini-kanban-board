@@ -1,0 +1,852 @@
+openapi: 3.1.0
+info:
+  title: Mini Kanban Board API
+  version: 0.1.0
+  description: |
+    Backend API expected by the frontend's mocked client
+    (`frontend/src/api/mockClient.ts`), which is the single source of truth
+    for this contract until a real HTTP client replaces it.
+
+    Every operation below (except `POST /share-links/redeem`, which still
+    requires a signed-in session per `_docs/specs.md`) needs the caller to
+    be an authenticated user AND, for board-scoped operations, a member of
+    that board. See `_docs/specs.md` for the full role model:
+    `owner` > `editor` > `viewer`.
+
+    Sign-up/sign-in themselves are out of scope of the frontend's current
+    mocked client (static UI only, see `_docs/frontend_specs.md`) and are
+    therefore not modeled here; the backend is expected to establish the
+    `session` cookie used by every request below through whatever
+    email/password flow it implements per `_docs/specs.md`.
+servers:
+  - url: /api
+
+security:
+  - sessionCookie: []
+
+paths:
+  /me:
+    get:
+      operationId: getCurrentUser
+      summary: Get the signed-in user's profile.
+      tags: [Users]
+      responses:
+        "200":
+          description: The current user.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /boards:
+    get:
+      operationId: listBoards
+      summary: List every board the current user is a member of.
+      tags: [Boards]
+      responses:
+        "200":
+          description: Boards the user owns or is shared on, sorted by name.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/BoardSummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      operationId: createBoard
+      summary: Create a new board, owned by the current user.
+      description: Seeds the board with the four default columns (Backlog, Today, Doing, Done).
+      tags: [Boards]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1 }
+      responses:
+        "201":
+          description: The created board.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Board" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /boards/{boardId}:
+    parameters:
+      - $ref: "#/components/parameters/boardId"
+    get:
+      operationId: getBoard
+      summary: Get a board with its columns and non-archived tasks.
+      tags: [Boards]
+      responses:
+        "200":
+          description: The board's contents, plus the caller's effective role.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BoardContents" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      operationId: renameBoard
+      summary: Rename a board.
+      description: Requires the `owner` role.
+      tags: [Boards]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1 }
+      responses:
+        "200":
+          description: The updated board.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Board" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      operationId: deleteBoard
+      summary: Delete a board and cascade-delete its columns, tasks, memberships, and share links.
+      description: Requires the `owner` role. Irreversible.
+      tags: [Boards]
+      responses:
+        "204": { description: Board deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /boards/{boardId}/transfer-ownership:
+    parameters:
+      - $ref: "#/components/parameters/boardId"
+    post:
+      operationId: transferOwnership
+      summary: Transfer board ownership to another existing member.
+      description: |
+        Requires the `owner` role. Demotes the current owner to `editor` and
+        promotes the target member to `owner`.
+      tags: [Boards]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [toUserId]
+              properties:
+                toUserId: { type: string }
+      responses:
+        "200":
+          description: The board's updated member list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/BoardMemberDetail" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /boards/{boardId}/columns:
+    parameters:
+      - $ref: "#/components/parameters/boardId"
+    post:
+      operationId: createColumn
+      summary: Create a column, appended just before the Done column.
+      description: Requires the `editor` role or higher.
+      tags: [Columns]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, description: 'Must not be "Done" (case-insensitive).' }
+      responses:
+        "201":
+          description: The created column.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Column" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /boards/{boardId}/columns/{columnId}:
+    parameters:
+      - $ref: "#/components/parameters/boardId"
+      - $ref: "#/components/parameters/columnId"
+    patch:
+      operationId: renameColumn
+      summary: Rename a column.
+      description: Requires the `editor` role or higher. The Done column cannot be renamed.
+      tags: [Columns]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, description: 'Must not be "Done" (case-insensitive).' }
+      responses:
+        "200":
+          description: The updated column.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Column" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      operationId: deleteColumn
+      summary: Delete a column, archiving any tasks it still contains.
+      description: Requires the `editor` role or higher. The Done column cannot be deleted.
+      tags: [Columns]
+      responses:
+        "200":
+          description: Number of tasks that were archived as a result.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [archivedCount]
+                properties:
+                  archivedCount: { type: integer, minimum: 0 }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /boards/{boardId}/columns/{columnId}/reorder:
+    parameters:
+      - $ref: "#/components/parameters/boardId"
+      - $ref: "#/components/parameters/columnId"
+    post:
+      operationId: reorderColumn
+      summary: Move a column to a new position among its board's columns.
+      description: |
+        Requires the `editor` role or higher. The Done column cannot be
+        reordered and always stays last; `index` is clamped accordingly.
+      tags: [Columns]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [index]
+              properties:
+                index: { type: integer, minimum: 0, description: Target zero-based position among sibling columns. }
+      responses:
+        "200":
+          description: All of the board's columns in their new order.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Column" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /boards/{boardId}/columns/{columnId}/tasks:
+    parameters:
+      - $ref: "#/components/parameters/boardId"
+      - $ref: "#/components/parameters/columnId"
+    post:
+      operationId: createTask
+      summary: Create a task, appended to the end of the column.
+      description: Requires the `editor` role or higher.
+      tags: [Tasks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title: { type: string, minLength: 1 }
+                description: { type: string }
+                dueDate:
+                  type: string
+                  format: date
+                  nullable: true
+                priority: { $ref: "#/components/schemas/Priority" }
+      responses:
+        "201":
+          description: The created task.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /boards/{boardId}/tasks/{taskId}:
+    parameters:
+      - $ref: "#/components/parameters/boardId"
+      - $ref: "#/components/parameters/taskId"
+    patch:
+      operationId: updateTask
+      summary: Update a task's title, description, due date, and/or priority.
+      description: Requires the `editor` role or higher. All fields are optional; only provided fields are changed.
+      tags: [Tasks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string, minLength: 1 }
+                description: { type: string }
+                dueDate:
+                  type: string
+                  format: date
+                  nullable: true
+                priority: { $ref: "#/components/schemas/Priority" }
+      responses:
+        "200":
+          description: The updated task.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      operationId: deleteTaskPermanently
+      summary: Permanently delete an archived task.
+      description: Requires the `owner` role. The task must already be archived.
+      tags: [Tasks]
+      responses:
+        "204": { description: Task permanently deleted. }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /boards/{boardId}/tasks/{taskId}/move:
+    parameters:
+      - $ref: "#/components/parameters/boardId"
+      - $ref: "#/components/parameters/taskId"
+    post:
+      operationId: moveTask
+      summary: Move a task to a column and position (drag-and-drop drop target).
+      description: Requires the `editor` role or higher. The task must not be archived.
+      tags: [Tasks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [toColumnId, toIndex]
+              properties:
+                toColumnId: { type: string }
+                toIndex: { type: integer, minimum: 0, description: Target zero-based position among the destination column's non-archived tasks. }
+      responses:
+        "200":
+          description: The moved task.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /boards/{boardId}/tasks/{taskId}/archive:
+    parameters:
+      - $ref: "#/components/parameters/boardId"
+      - $ref: "#/components/parameters/taskId"
+    post:
+      operationId: archiveTask
+      summary: Archive a single task.
+      description: Requires the `editor` role or higher.
+      tags: [Tasks]
+      responses:
+        "200":
+          description: The archived task.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /boards/{boardId}/tasks/{taskId}/unarchive:
+    parameters:
+      - $ref: "#/components/parameters/boardId"
+      - $ref: "#/components/parameters/taskId"
+    post:
+      operationId: unarchiveTask
+      summary: Restore an archived task back onto its original column.
+      description: |
+        Requires the `editor` role or higher. Kept for data-model
+        completeness; there is currently no UI surface for it
+        (restoration is out of scope for v1 per `_docs/specs.md`).
+      tags: [Tasks]
+      responses:
+        "200":
+          description: The unarchived task, appended to the end of its column.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: The task's original column no longer exists.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /boards/{boardId}/tasks/{taskId}/restore:
+    parameters:
+      - $ref: "#/components/parameters/boardId"
+      - $ref: "#/components/parameters/taskId"
+    post:
+      operationId: restoreTask
+      summary: Restore an archived task back onto the board, from the archive view.
+      description: |
+        Requires the `editor` role or higher. Puts the task back at the end
+        of the column it was archived from, or the board's "Backlog"
+        column if that column has since been deleted.
+      tags: [Tasks]
+      responses:
+        "200":
+          description: The board's refreshed list of archived tasks.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  allOf:
+                    - $ref: "#/components/schemas/Task"
+                    - type: object
+                      required: [columnName]
+                      properties:
+                        columnName: { type: string, description: '"Deleted column" if the original column no longer exists.' }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: The task is not archived, or no column is available to restore it into.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /boards/{boardId}/archive-done:
+    parameters:
+      - $ref: "#/components/parameters/boardId"
+    post:
+      operationId: archiveAllInDone
+      summary: Archive every non-archived task currently in the Done column.
+      description: Requires the `editor` role or higher.
+      tags: [Tasks]
+      responses:
+        "200":
+          description: Number of tasks archived.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [archivedCount]
+                properties:
+                  archivedCount: { type: integer, minimum: 0 }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /boards/{boardId}/archived-tasks:
+    parameters:
+      - $ref: "#/components/parameters/boardId"
+    get:
+      operationId: listArchivedTasks
+      summary: List a board's archived tasks, most recently created first.
+      description: Requires the `viewer` role or higher.
+      tags: [Tasks]
+      responses:
+        "200":
+          description: Archived tasks, each annotated with its (possibly deleted) column's name.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  allOf:
+                    - $ref: "#/components/schemas/Task"
+                    - type: object
+                      required: [columnName]
+                      properties:
+                        columnName: { type: string, description: '"Deleted column" if the original column no longer exists.' }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /boards/{boardId}/members:
+    parameters:
+      - $ref: "#/components/parameters/boardId"
+    get:
+      operationId: listMembers
+      summary: List a board's members.
+      description: Requires the `viewer` role or higher.
+      tags: [Members]
+      responses:
+        "200":
+          description: Members sorted by role (owner first), then name.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/BoardMemberDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /boards/{boardId}/members/{userId}:
+    parameters:
+      - $ref: "#/components/parameters/boardId"
+      - $ref: "#/components/parameters/userId"
+    patch:
+      operationId: updateMemberRole
+      summary: Change a member's role.
+      description: Requires the `owner` role. Cannot be used to change the owner's own role.
+      tags: [Members]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role: { $ref: "#/components/schemas/ShareRole" }
+      responses:
+        "200":
+          description: The board's updated member list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/BoardMemberDetail" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      operationId: removeMember
+      summary: Remove a member's access to the board.
+      description: |
+        Requires the `owner` role. Cannot remove the owner. Also revokes
+        every currently active share link on the board.
+      tags: [Members]
+      responses:
+        "200":
+          description: The board's updated member list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/BoardMemberDetail" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /boards/{boardId}/share-links:
+    parameters:
+      - $ref: "#/components/parameters/boardId"
+    get:
+      operationId: listShareLinks
+      summary: List a board's share links.
+      description: Requires the `owner` role.
+      tags: [Share Links]
+      responses:
+        "200":
+          description: All share links for the board, including revoked ones.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ShareLink" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      operationId: createShareLink
+      summary: Create a new share link scoped to a role.
+      description: Requires the `owner` role.
+      tags: [Share Links]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role: { $ref: "#/components/schemas/ShareRole" }
+      responses:
+        "201":
+          description: The created share link.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShareLink" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /boards/{boardId}/share-links/{linkId}/revoke:
+    parameters:
+      - $ref: "#/components/parameters/boardId"
+      - name: linkId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: revokeShareLink
+      summary: Revoke a share link.
+      description: Requires the `owner` role.
+      tags: [Share Links]
+      responses:
+        "200":
+          description: The revoked share link.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShareLink" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /share-links/redeem:
+    post:
+      operationId: redeemShareLink
+      summary: Redeem a share link token, joining (or upgrading access to) its board.
+      description: |
+        Requires the caller to be signed in, but not to already be a member
+        of the target board. A link never downgrades an existing
+        membership — only upgrades it if the link's role outranks the
+        caller's current role.
+      tags: [Share Links]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        "200":
+          description: The resulting board membership.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [boardId, boardName, role, changed]
+                properties:
+                  boardId: { type: string }
+                  boardName: { type: string }
+                  role: { $ref: "#/components/schemas/Role" }
+                  changed: { type: boolean, description: Whether this call changed the caller's membership. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: The link token is not valid, or its board no longer exists.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "410":
+          description: The link has been revoked.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: session
+      description: Session cookie established by the (out of scope) email/password sign-in flow described in `_docs/specs.md`.
+
+  parameters:
+    boardId:
+      name: boardId
+      in: path
+      required: true
+      schema: { type: string }
+    columnId:
+      name: columnId
+      in: path
+      required: true
+      schema: { type: string }
+    taskId:
+      name: taskId
+      in: path
+      required: true
+      schema: { type: string }
+    userId:
+      name: userId
+      in: path
+      required: true
+      schema: { type: string }
+
+  responses:
+    BadRequest:
+      description: The request was invalid (e.g. missing required field, protected column name).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: No valid session.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: The caller's role on this board is insufficient for this action.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: The board, column, task, member, or share link does not exist.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }
+
+    Role:
+      type: string
+      enum: [owner, editor, viewer]
+    ShareRole:
+      type: string
+      enum: [editor, viewer]
+    Priority:
+      type: string
+      enum: [Low, Medium, High]
+
+    User:
+      type: object
+      required: [id, email, name]
+      properties:
+        id: { type: string }
+        email: { type: string, format: email }
+        name: { type: string }
+
+    Board:
+      type: object
+      required: [id, name, createdAt]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    BoardSummary:
+      allOf:
+        - $ref: "#/components/schemas/Board"
+        - type: object
+          required: [role, ownerName]
+          properties:
+            role: { $ref: "#/components/schemas/Role" }
+            ownerName: { type: string }
+
+    BoardContents:
+      type: object
+      required: [board, role, columns, tasks]
+      properties:
+        board: { $ref: "#/components/schemas/Board" }
+        role: { $ref: "#/components/schemas/Role" }
+        columns:
+          type: array
+          items: { $ref: "#/components/schemas/Column" }
+        tasks:
+          type: array
+          items: { $ref: "#/components/schemas/Task" }
+
+    BoardMember:
+      type: object
+      required: [boardId, userId, role]
+      properties:
+        boardId: { type: string }
+        userId: { type: string }
+        role: { $ref: "#/components/schemas/Role" }
+
+    BoardMemberDetail:
+      allOf:
+        - $ref: "#/components/schemas/BoardMember"
+        - type: object
+          required: [user]
+          properties:
+            user: { $ref: "#/components/schemas/User" }
+
+    ShareLink:
+      type: object
+      required: [id, boardId, role, token, createdBy, revoked]
+      properties:
+        id: { type: string }
+        boardId: { type: string }
+        role: { $ref: "#/components/schemas/ShareRole" }
+        token: { type: string }
+        createdBy: { type: string }
+        revoked: { type: boolean }
+
+    Column:
+      type: object
+      required: [id, boardId, name, order]
+      properties:
+        id: { type: string }
+        boardId: { type: string }
+        name: { type: string }
+        order:
+          type: number
+          description: Sortable order value, unique within the board.
+
+    Task:
+      type: object
+      required: [id, boardId, columnId, title, description, dueDate, priority, order, archived, createdAt, createdBy]
+      properties:
+        id: { type: string }
+        boardId: { type: string }
+        columnId: { type: string }
+        title: { type: string }
+        description: { type: string }
+        dueDate:
+          type: string
+          format: date
+          nullable: true
+        priority: { $ref: "#/components/schemas/Priority" }
+        order:
+          type: number
+          description: Sortable order value, unique within the column.
+        archived: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        createdBy: { type: string }
