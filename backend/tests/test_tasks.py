@@ -232,6 +232,18 @@ def test_move_task_respacing_never_produces_duplicate_orders_at_front(client):
     )
     assert response.status_code == 200
 
+    # Now move a task to the very front again.
+    response = client.post(
+        f"/api/boards/{board_id}/tasks/{t2['id']}/move",
+        json={"toColumnId": backlog, "toIndex": 0},
+    )
+    assert response.status_code == 200
+
+    board_contents = client.get(f"/api/boards/{board_id}").json()
+    backlog_tasks = [t for t in board_contents["tasks"] if t["columnId"] == backlog]
+    orders = [t["order"] for t in backlog_tasks]
+    assert len(orders) == len(set(orders)), f"duplicate order values found: {orders}"
+
 
 def test_move_task_to_front_respaces_before_the_front_order_underflows(client):
     """Repeatedly moving a task to the front of its column halves
@@ -271,15 +283,3 @@ def test_move_task_to_front_respaces_before_the_front_order_underflows(client):
     # A respace must have actually happened: both tasks should have been
     # reset to round GAP-multiple values, not just a naive halving of 0.5.
     assert orders == [1000.0, 2000.0]
-
-    # Now move a task to the very front again.
-    response = client.post(
-        f"/api/boards/{board_id}/tasks/{t2['id']}/move",
-        json={"toColumnId": backlog, "toIndex": 0},
-    )
-    assert response.status_code == 200
-
-    board_contents = client.get(f"/api/boards/{board_id}").json()
-    backlog_tasks = [t for t in board_contents["tasks"] if t["columnId"] == backlog]
-    orders = [t["order"] for t in backlog_tasks]
-    assert len(orders) == len(set(orders)), f"duplicate order values found: {orders}"
