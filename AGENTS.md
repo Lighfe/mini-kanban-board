@@ -19,3 +19,9 @@ project — don't edit it locally; changes go through Lovable.
   integration work.
 - **Lovable** (MCP plugin) — builds and iterates the frontend.
 - **Codex** (plugin) — code review, run at the end of every stage.
+
+## Backend conventions
+
+- Use `uv` for dependency management in `backend/`: `uv sync`,
+  `uv add <package-name>`, `uv run python <file>`.
+- Commit regularly.
