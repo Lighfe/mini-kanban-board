@@ -49,7 +49,7 @@ def seed_default_board(user_id: str, name: str) -> str:
     }
     member_id = str(uuid.uuid4())
     store.board_members[member_id] = {"id": member_id, "boardId": board_id, "userId": user_id, "role": "owner"}
-    order = 0.0
+    order = append_order([])
     for column_name in DEFAULT_COLUMN_NAMES:
         column_id = str(uuid.uuid4())
         store.columns[column_id] = {
