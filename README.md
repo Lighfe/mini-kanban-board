@@ -4,7 +4,8 @@ A multi-user kanban board app. Each user gets personal boards to organize
 tasks, and can share individual boards with others (view or edit access)
 for collaborative work.
 
-See [_docs/specs.md](_docs/specs.md) for the full design spec.
+See [_docs/specs.md](_docs/specs.md) for the full design spec and
+[_docs/process.md](_docs/process.md) for how the project is built.
 
 ## Frontend
 
