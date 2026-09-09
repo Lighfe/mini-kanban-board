@@ -34,6 +34,21 @@ class Store:
     def members_for_board(self, board_id: str) -> list[dict[str, Any]]:
         return [m for m in self.board_members.values() if m["boardId"] == board_id]
 
+    def members_detailed_for_board(self, board_id: str) -> list[dict[str, Any]]:
+        """Members for a board, joined with their user record and sorted
+        owner-first (highest role rank first) then alphabetically by name.
+
+        Uses `permissions.ROLE_RANK` as the single source of truth for role
+        ordering; imported locally to avoid a circular import (permissions
+        imports store)."""
+        from kanban.permissions import ROLE_RANK
+
+        ordered = sorted(
+            self.members_for_board(board_id),
+            key=lambda m: (-ROLE_RANK[m["role"]], self.users[m["userId"]]["name"]),
+        )
+        return [{**m, "user": self.users[m["userId"]]} for m in ordered]
+
     def columns_for_board(self, board_id: str) -> list[dict[str, Any]]:
         return sorted(
             (c for c in self.columns.values() if c["boardId"] == board_id),

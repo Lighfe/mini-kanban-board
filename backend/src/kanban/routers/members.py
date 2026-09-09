@@ -14,16 +14,10 @@ class UpdateRoleBody(BaseModel):
     role: ShareRole
 
 
-def _detailed(members: list[dict]) -> list[dict]:
-    role_rank = {"owner": 0, "editor": 1, "viewer": 2}
-    ordered = sorted(members, key=lambda m: (role_rank[m["role"]], store.users[m["userId"]]["name"]))
-    return [{**m, "user": store.users[m["userId"]]} for m in ordered]
-
-
 @router.get("", response_model=list[BoardMemberDetail])
 def list_members(boardId: str, current_user: dict = Depends(get_current_user)) -> list[dict]:
     require_role_or_403(boardId, current_user["id"], "viewer")
-    return _detailed(store.members_for_board(boardId))
+    return store.members_detailed_for_board(boardId)
 
 
 @router.patch("/{userId}", response_model=list[BoardMemberDetail])
@@ -37,7 +31,7 @@ def update_member_role(
     if not member:
         raise ApiError(404, "Member not found")
     member["role"] = body.role
-    return _detailed(store.members_for_board(boardId))
+    return store.members_detailed_for_board(boardId)
 
 
 @router.delete("/{userId}", response_model=list[BoardMemberDetail])
@@ -52,4 +46,4 @@ def remove_member(boardId: str, userId: str, current_user: dict = Depends(get_cu
     for link in store.share_links.values():
         if link["boardId"] == boardId and not link["revoked"]:
             link["revoked"] = True
-    return _detailed(store.members_for_board(boardId))
+    return store.members_detailed_for_board(boardId)

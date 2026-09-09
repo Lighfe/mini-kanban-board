@@ -36,6 +36,19 @@ def test_update_member_role_requires_owner(client):
     assert updated["role"] == "viewer"
 
 
+def test_update_and_remove_member_require_owner_role(client):
+    board_id, owner_id, bob = setup_board_with_second_member(client, role="editor")
+
+    client.cookies.clear()
+    client.post("/api/auth/signin", json={"email": "bob@example.com", "password": "pw"})
+
+    patch_response = client.patch(f"/api/boards/{board_id}/members/{owner_id}", json={"role": "viewer"})
+    assert patch_response.status_code == 403
+
+    delete_response = client.delete(f"/api/boards/{board_id}/members/{owner_id}")
+    assert delete_response.status_code == 403
+
+
 def test_update_member_role_cannot_change_owner_own_role(client):
     board_id, owner_id, bob = setup_board_with_second_member(client)
     response = client.patch(f"/api/boards/{board_id}/members/{owner_id}", json={"role": "viewer"})

@@ -87,6 +87,4 @@ def transfer_ownership(
         raise ApiError(400, "Target user is not a member of this board")
     current_owner_member["role"] = "editor"
     target_member["role"] = "owner"
-    return [
-        {**m, "user": store.users[m["userId"]]} for m in store.members_for_board(boardId)
-    ]
+    return store.members_detailed_for_board(boardId)
