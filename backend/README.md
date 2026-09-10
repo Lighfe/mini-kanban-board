@@ -23,6 +23,14 @@ HTTPS:
 
     uv run uvicorn kanban.main:app --reload --port 8000
 
+## CORS
+
+The frontend runs on a different origin/port and sends the session cookie
+via `credentials: "include"`, so any `http://localhost:<port>` or
+`https://localhost:<port>` origin is allowed by default (with credentials).
+For a non-localhost frontend origin (e.g. a deployed Lovable preview URL),
+set `KANBAN_CORS_ORIGINS` to a comma-separated list of allowed origins.
+
 ## Test
 
     make test

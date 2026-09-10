@@ -36,7 +36,14 @@ class SigninRequest(BaseModel):
 
 def _set_session_cookie(response: Response, user_id: str) -> None:
     token = create_session(user_id)
-    response.set_cookie(SESSION_COOKIE, token, httponly=True, samesite="lax", secure=SECURE_COOKIES)
+    # "Lax" is fine (and required) for local dev: localhost:<port> pairs are
+    # same-site, so it's still sent on the frontend's cross-origin fetches,
+    # and a real HTTPS deployment might put the frontend on a different
+    # registrable domain (e.g. a Lovable preview URL) — a genuinely
+    # cross-site fetch, which browsers never attach a "Lax" cookie to.
+    # "None" requires "Secure", which SECURE_COOKIES already tracks.
+    samesite = "none" if SECURE_COOKIES else "lax"
+    response.set_cookie(SESSION_COOKIE, token, httponly=True, samesite=samesite, secure=SECURE_COOKIES)
 
 
 @router.post("/signup", status_code=201, response_model=User)
