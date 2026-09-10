@@ -21,9 +21,10 @@ To use Postgres (or another real database) instead:
     uv add "psycopg[binary]"   # or your driver of choice
     KANBAN_DATABASE_URL="postgresql+psycopg://user:pass@host/db" make run
 
-The test suite always runs against an isolated in-memory SQLite database
-(`tests/conftest.py` sets `KANBAN_DATABASE_URL` before the app is
-imported), regardless of what's configured for local dev.
+By default the test suite runs against an isolated in-memory SQLite
+database (`tests/conftest.py` sets `KANBAN_DATABASE_URL` before the app is
+imported); an explicitly-set `KANBAN_DATABASE_URL` in the environment
+overrides that.
 
 ## Run
 

@@ -14,7 +14,7 @@ each.
    client (`src/api/mockClient.ts`), defining the real endpoints and
    shapes needed to swap the mock for a real backend.
 3. **Backend implementation** — build `backend/` against the contract.
-   Language/framework is not decided yet; pick it when this stage starts.
+   Built with FastAPI (Python).
 4. **Persistence** — replace any in-memory/mock store with a real
    database.
 5. **Integration** — swap `mockClient.ts`'s internals for real API calls
