@@ -10,14 +10,15 @@ from kanban.routers import auth, boards, columns, members, share_links, tasks, u
 app = FastAPI(title="Mini Kanban Board API")
 register_exception_handlers(app)
 
-# Mock stage only (see _docs/process.md): the in-memory Store is shared,
-# mutable, and not thread-safe, yet FastAPI dispatches sync `def` route
-# handlers to a thread pool, so concurrent requests can interleave mid
-# read-modify-write (e.g. two concurrent signups with the same email, or
-# two concurrent transfer-ownership calls both passing their authorization
-# check before either mutates state). A single process-wide lock that
-# serializes full request handling is sufficient here; it will be replaced
-# by real per-record persistence/transactions in the Persistence stage.
+# The Store (kanban/store.py) is backed by a single process-wide
+# SQLAlchemy Session (kanban/db.py) shared across requests, and FastAPI
+# dispatches sync `def` route handlers to a thread pool, so concurrent
+# requests can interleave mid read-modify-write (e.g. two concurrent
+# signups with the same email, or two concurrent transfer-ownership calls
+# both passing their authorization check before either mutates state). A
+# single process-wide lock that serializes full request handling avoids
+# that; it also commits the shared Session after each request (see
+# locking.py).
 #
 # This is added as a raw ASGI middleware class (not `@app.middleware("http")`,
 # which wraps into Starlette's BaseHTTPMiddleware) deliberately: BaseHTTPMiddleware

@@ -7,6 +7,12 @@ import os
 # every session-dependent test.
 os.environ.setdefault("KANBAN_SECURE_COOKIES", "false")
 
+# Likewise must be set before kanban.db is imported: default to a fast,
+# isolated in-memory SQLite DB so the test suite never touches (or
+# pollutes) the dev-mode `backend/kanban.db` file, and each test run
+# starts from a clean database.
+os.environ.setdefault("KANBAN_DATABASE_URL", "sqlite:///:memory:")
+
 import pytest
 from fastapi.testclient import TestClient
 

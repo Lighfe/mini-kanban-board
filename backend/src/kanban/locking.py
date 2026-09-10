@@ -1,4 +1,4 @@
-"""Process-wide request serialization for the in-memory mock store.
+"""Process-wide request serialization for the shared database Session.
 
 See kanban/main.py for why this exists and why it's a raw ASGI middleware
 class rather than `@app.middleware("http")` (Starlette's BaseHTTPMiddleware).
@@ -6,12 +6,21 @@ class rather than `@app.middleware("http")` (Starlette's BaseHTTPMiddleware).
 
 import asyncio
 
+from kanban.db import session as db_session
+
 
 class SerializeRequestsMiddleware:
     """Holds a single asyncio.Lock for the full duration of every HTTP
     request, so no two requests' handler code — sync (dispatched to a
     thread pool by Starlette) or async — ever executes concurrently
-    against the shared Store.
+    against the shared, process-wide SQLAlchemy Session (kanban/db.py).
+
+    Also commits that Session after every request that completes
+    normally, and rolls it back if the request raised, so each request
+    gets its own short-lived transaction — matching the usual
+    one-session-per-request pattern, just without a per-request Session
+    object (kanban/db.py explains why one process-wide Session is used
+    instead).
 
     The lock is (re)created lazily, bound to whichever event loop is
     currently running, rather than once at import time. A real deployment
@@ -47,4 +56,10 @@ class SerializeRequestsMiddleware:
             await self.app(scope, receive, send)
             return
         async with self._get_lock():
-            await self.app(scope, receive, send)
+            try:
+                await self.app(scope, receive, send)
+            except Exception:
+                db_session.rollback()
+                raise
+            else:
+                db_session.commit()
