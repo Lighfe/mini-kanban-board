@@ -99,11 +99,35 @@ container is removed; step 4 wires up Postgres.
 ### 5. CI (GitHub Actions)
 
 On every push and PR: check out with submodules, run the backend tests,
-build the Docker image, start it with Compose, and smoke-test
-`GET /api/health` plus the frontend root. End-to-end browser tests
-(Playwright, as in the course guide) are a stretch goal, not a blocker;
-the spec's interaction-layer tests in [specs.md](specs.md#testing-approach)
-are the candidates.
+build the Docker image, and start it with Compose.
+
+Then an end-to-end Playwright test in `e2e/` at the repo root, run
+against that running Compose stack, covering the sharing flow — the one
+piece of behavior that only exists across two real user sessions and
+can't be exercised by either side's own test suite:
+
+1. Sign up as user A (session 1); create a board (seeded by default, but
+   create one explicitly to also cover that path).
+2. From board settings, create a view or edit share link and copy its
+   token/URL.
+3. In a separate browser context (session 2), sign up as user B and open
+   the share link; confirm it lands on user A's board with the granted
+   role.
+4. As user B, move a card to a different column (or edit its title, if
+   the link was view-only — then assert the edit control is absent
+   instead).
+5. Reload user A's session and confirm the change is visible.
+
+Step 5 is a reload, not a live push: per
+[specs.md](specs.md#concurrency), this app has no real-time sync, so
+proving the change persisted and is visible on refresh is the correct
+assertion here, not that session 1 updates without reloading.
+
+Treat this as a required CI step, not a stretch goal — it's the only
+test that exercises share-link redemption and cross-user permissions end
+to end against the real backend and database, which the spec's unit and
+interaction-layer tests in [specs.md](specs.md#testing-approach) don't
+cover.
 
 ### 6. Deploy
 
