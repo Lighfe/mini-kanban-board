@@ -39,7 +39,7 @@ shell and no server runtime. The `index.html` fallback for unknown paths
 is the backend's job (step 2). Details in
 [frontend_specs.md](frontend_specs.md#build-target).
 
-### 2. FastAPI serves the frontend
+### 2. FastAPI serves the frontend — done
 
 - Mount the built frontend directory (`dist/client`; path from an env
   var, e.g. `KANBAN_STATIC_DIR`; when unset, serve nothing, as in local
@@ -49,6 +49,8 @@ is the backend's job (step 2). Details in
   relative to its own origin instead of `http://localhost:8000/api`.
 - Verify locally: build the frontend, point the backend at the output,
   open the app on the backend's port, refresh a deep link.
+
+Details in [backend/README.md](../backend/README.md#serving-the-frontend).
 
 ### 3. Dockerfile
 

@@ -1,7 +1,10 @@
 import os
+from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from kanban.errors import register_exception_handlers
 from kanban.locking import SerializeRequestsMiddleware
@@ -64,3 +67,22 @@ app.include_router(users.router)
 @app.get("/api/health")
 def health_check() -> dict[str, str]:
     return {"status": "ok"}
+
+
+# Serves the built frontend (see _docs/deployment-plan.md step 2). Left
+# unset, no static routes are registered, so local dev (no built frontend
+# on disk) and the test suite are unaffected. Registered last so the
+# `/{full_path:path}` catch-all doesn't shadow the `/api/*` routers above.
+_static_dir = os.environ.get("KANBAN_STATIC_DIR")
+if _static_dir:
+    static_dir = Path(_static_dir)
+    index_file = static_dir / "index.html"
+    if not index_file.is_file():
+        raise RuntimeError(f"KANBAN_STATIC_DIR={static_dir} has no index.html")
+    app.mount("/assets", StaticFiles(directory=static_dir / "assets"), name="assets")
+
+    @app.get("/{full_path:path}")
+    def serve_frontend(full_path: str) -> FileResponse:
+        if full_path == "api" or full_path.startswith("api/"):
+            raise HTTPException(status_code=404)
+        return FileResponse(index_file)

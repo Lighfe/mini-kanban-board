@@ -48,6 +48,27 @@ via `credentials: "include"`, so any `http://localhost:<port>` or
 For a non-localhost frontend origin (e.g. a deployed Lovable preview URL),
 set `KANBAN_CORS_ORIGINS` to a comma-separated list of allowed origins.
 
+## Serving the frontend
+
+In production the backend also serves the built frontend (see
+`_docs/deployment-plan.md`), so the app is same-origin and only one
+container is needed. Set `KANBAN_STATIC_DIR` to the built frontend's
+`dist/client` directory: `/assets/*` is served as static files, and any
+other non-`/api` path returns `index.html` so client-side routes and deep
+links work on refresh. `/api/*` keeps its normal JSON behavior, including
+a JSON 404 for unmatched API routes. Left unset (the default), no static
+routes are registered — local dev and the test suite are unaffected.
+
+To try it locally, build the frontend with the production API base URL
+and point the backend at the output:
+
+    cd frontend && VITE_API_BASE_URL=/api npm run build
+    cd ../backend
+    KANBAN_STATIC_DIR=../frontend/dist/client make run
+
+Then open the backend's port in a browser and refresh a deep link (e.g.
+`/boards/<id>`) to confirm it doesn't 404.
+
 ## Test
 
     make test
