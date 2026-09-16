@@ -11,7 +11,7 @@ run a Codex review, commit, then move on.
 
 ## Target shape
 
-- **One container.** A two-stage Docker build: Node builds the frontend
+- **One container.** A two-stage Docker build: Bun builds the frontend
   into static files, then a Python image runs the backend with those
   files copied in. FastAPI serves `/api/*` as today and the static
   frontend for everything else, with an `index.html` fallback so
@@ -52,14 +52,29 @@ is the backend's job (step 2). Details in
 
 Details in [backend/README.md](../backend/README.md#serving-the-frontend).
 
-### 3. Dockerfile
+### 3. Dockerfile — done
 
-Two-stage build at the repo root (it needs both `frontend/` and
-`backend/`): Node stage runs `npm ci && npm run build` with
-`VITE_API_BASE_URL=/api`; Python stage installs the backend with `uv`,
-copies the static output in, and runs uvicorn on one worker. The
-`frontend/` submodule must be checked out for the build to work
-(`git submodule update --init`).
+Two-stage build in [Dockerfile](../Dockerfile) at the repo root (it needs
+both `frontend/` and `backend/`):
+
+- Frontend stage (`oven/bun`): `bun install --frozen-lockfile && bun run
+  build` with `VITE_API_BASE_URL=/api`. Bun rather than `npm ci` because
+  the Lovable-managed frontend only ships a `bun.lock`, no
+  `package-lock.json`.
+- Backend stage (`astral-sh/uv` Python 3.12 image): `uv sync --frozen
+  --no-dev`, copies `dist/client` from the first stage to `/app/static`,
+  sets `KANBAN_STATIC_DIR` to it, and runs `uvicorn` with `--workers 1`
+  on port 8000.
+
+The `frontend/` submodule must be checked out for the build to work
+(`git submodule update --init`). Verified locally with
+`docker build -t mini-kanban . && docker run -p 8000:8000 -e
+KANBAN_SECURE_COOKIES=false mini-kanban`: `/api/health` returns JSON,
+`/` and a refreshed deep link (`/boards/<id>`) both return the
+`index.html` shell, `/assets/*` is served as files, and unknown `/api/*`
+paths still get a JSON 404. Without a database URL the container uses a
+SQLite file inside its own filesystem, so data is lost when the
+container is removed; step 4 wires up Postgres.
 
 ### 4. Postgres + Docker Compose
 

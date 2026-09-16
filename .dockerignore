@@ -1,0 +1,15 @@
+.git
+.gitmodules
+_docs
+frontend/node_modules
+frontend/dist
+frontend/.tanstack
+frontend/.output
+backend/.venv
+backend/kanban.db
+backend/tests
+**/__pycache__
+**/.pytest_cache
+*.log
+.env
+.env.local
