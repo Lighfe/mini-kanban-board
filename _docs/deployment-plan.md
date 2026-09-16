@@ -98,45 +98,41 @@ container is removed; step 4 wires up Postgres.
 
 ### 5. CI (GitHub Actions)
 
-On every push and PR: check out with submodules, run the backend tests,
-build the Docker image, and start it with Compose.
+On every push and PR: frontend and backend tests in parallel, then build
+the Docker image and start it with Compose.
 
 Then an end-to-end Playwright test in `e2e/` at the repo root, run
-against that running Compose stack, covering the sharing flow — the one
-piece of behavior that only exists across two real user sessions and
-can't be exercised by either side's own test suite:
+against that running Compose stack, covering the sharing flow:
 
-1. Sign up as user A (session 1); create a board (seeded by default, but
-   create one explicitly to also cover that path).
-2. From board settings, create a view or edit share link and copy its
+1. Sign up as user A (session 1); create a board and a card explicitly
+   (don't rely on seeded sample data).
+2. From board settings, create an editor share link and copy its
    token/URL.
-3. In a separate browser context (session 2), sign up as user B and open
-   the share link; confirm it lands on user A's board with the granted
-   role.
-4. As user B, move a card to a different column (or edit its title, if
-   the link was view-only — then assert the edit control is absent
-   instead).
-5. Reload user A's session and confirm the change is visible.
+3. In a separate browser context (session 2), open the share link
+   unsigned-in first (covers sign-up-then-redeem), sign up as user B,
+   and confirm it lands on user A's board as editor.
+4. As user B, move the card to a different column.
+5. Reload user A's session and confirm the move is visible.
 
-Step 5 is a reload, not a live push: per
-[specs.md](specs.md#concurrency), this app has no real-time sync, so
-proving the change persisted and is visible on refresh is the correct
-assertion here, not that session 1 updates without reloading.
+Per [specs.md](specs.md#concurrency) this app has no real-time sync, so
+step 5 checks persistence after a reload, not a live push.
 
-Treat this as a required CI step, not a stretch goal — it's the only
-test that exercises share-link redemption and cross-user permissions end
-to end against the real backend and database, which the spec's unit and
-interaction-layer tests in [specs.md](specs.md#testing-approach) don't
-cover.
+Cover the viewer case separately (a viewer link opens the card read-only,
+no save action, no drag) rather than branching it into the same test.
 
 ### 6. Deploy
 
-Push the image to a registry and run it with a managed Postgres and TLS
-in front. The course guide uses AWS (CloudFormation, single EC2
-instance, GitHub Actions deploying via OIDC). That's the default; a
-platform like Render, Railway, or Fly.io is a simpler alternative with
-the same container. Deploy on push to `main` after CI passes, then
-verify `GET /api/health` on the public URL.
+Push the image to a registry and run it behind a managed Postgres, TLS,
+and a deployment role scoped to just this deploy (OIDC, per the course
+guide). The course guide uses AWS (CloudFormation, single EC2 instance);
+that's the default, with Render, Railway, or Fly.io as a simpler
+alternative running the same container. Note the deviation from the
+guide either way: it runs Postgres on the same instance, this plan uses
+a managed database instead. Pick one before implementing this step.
+`KANBAN_SECURE_COOKIES` must stay at its default (unset) in production —
+Compose only disables it for local plain-HTTP use. Deploy on push to
+`main` after CI passes, then poll `GET /api/health` until it returns 200
+before declaring the deploy done.
 
 Production configuration:
 
