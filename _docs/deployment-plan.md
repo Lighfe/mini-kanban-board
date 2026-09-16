@@ -76,16 +76,25 @@ paths still get a JSON 404. Without a database URL the container uses a
 SQLite file inside its own filesystem, so data is lost when the
 container is removed; step 4 wires up Postgres.
 
-### 4. Postgres + Docker Compose
+### 4. Postgres + Docker Compose — done
 
-- Add the Postgres driver to the backend (`uv add "psycopg[binary]"`).
-- `docker-compose.yml` at the root with two services: `db` (Postgres,
-  with a health check) and `app` (built from the Dockerfile, with
-  `KANBAN_DATABASE_URL` pointing at `db`, `KANBAN_SECURE_COOKIES=false`
-  for plain-HTTP local use).
-- `docker compose up --build` runs the full production-shaped stack
-  locally. Run the backend test suite once against Postgres to catch any
-  SQLite-only assumptions.
+- `psycopg[binary]` added to the backend; no code changes were needed.
+  `KANBAN_DATABASE_URL=postgresql+psycopg://...` works end to end,
+  including `create_all` at startup, and the full backend test suite
+  passes against Postgres (`make test-pg`) — no SQLite-only assumptions
+  turned up.
+- [docker-compose.yml](../docker-compose.yml) at the root: `db`
+  (`postgres:17`, `pg_isready` health check, named volume `pgdata`,
+  port 5432 published on loopback only so tests can reach it from the
+  host) and `app`
+  (built from the Dockerfile, `depends_on` the healthy db,
+  `KANBAN_DATABASE_URL` pointing at `db`, `KANBAN_SECURE_COOKIES=false`,
+  port 8000 published).
+- Root [Makefile](../Makefile): `build`, `up`, `down`, `test`, `test-pg`.
+- Verified locally: `make up`, `/api/health` returns JSON, `/` returns
+  the frontend shell, signup + create board via the API, `docker compose
+  down` then `up` again — the board (and the session cookie, since
+  sessions are in the database too) survived the restart.
 
 ### 5. CI (GitHub Actions)
 

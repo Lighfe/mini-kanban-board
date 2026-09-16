@@ -1,0 +1,38 @@
+# Local production-shaped stack: the app container from ./Dockerfile plus
+# Postgres. See _docs/deployment-plan.md (step 4). Run with `make up`
+# (docker compose up --build) and `make down`.
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: kanban
+      POSTGRES_PASSWORD: kanban
+      POSTGRES_DB: kanban
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Published on loopback only so the backend test suite can run against
+    # this database from the host (`make test-pg`) without exposing the
+    # committed dev credentials to the network.
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kanban -d kanban"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      KANBAN_DATABASE_URL: postgresql+psycopg://kanban:kanban@db:5432/kanban
+      # The stack is served over plain HTTP locally; a Secure cookie would
+      # never be sent back by the browser.
+      KANBAN_SECURE_COOKIES: "false"
+    ports:
+      - "8000:8000"
+
+volumes:
+  pgdata:

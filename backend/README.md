@@ -16,15 +16,27 @@ SQLAlchemy database URL), read once at process start. Left unset, it
 defaults to a local SQLite file (`backend/kanban.db`), created
 automatically on first run — no setup needed for local dev.
 
-To use Postgres (or another real database) instead:
+The Postgres driver (`psycopg`) is already a dependency, so a Postgres
+URL works out of the box; tables are created at startup if missing:
 
-    uv add "psycopg[binary]"   # or your driver of choice
-    KANBAN_DATABASE_URL="postgresql+psycopg://user:pass@host/db" make run
+    KANBAN_DATABASE_URL="postgresql+psycopg://kanban:kanban@localhost:5432/kanban" make run
+
+(That URL matches the `db` service in the root `docker-compose.yml`,
+which publishes Postgres on `localhost:5432`.) For another database, add
+its SQLAlchemy driver with `uv add` and use the matching URL.
 
 By default the test suite runs against an isolated in-memory SQLite
 database (`tests/conftest.py` sets `KANBAN_DATABASE_URL` before the app is
 imported); an explicitly-set `KANBAN_DATABASE_URL` in the environment
-overrides that.
+overrides that. To run the tests against Postgres, e.g. the Compose
+`db` service:
+
+    KANBAN_DATABASE_URL="postgresql+psycopg://kanban:kanban@localhost:5432/kanban" make test
+
+or `make test-pg` from the repo root, which starts the `db` service
+first. Note that the suite drops and recreates every table between tests,
+so it **wipes whatever database it points at** — don't point it at one
+whose data you want to keep.
 
 ## Run
 

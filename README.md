@@ -21,8 +21,8 @@ Router/Query, shadcn/ui on Radix primitives, Tailwind CSS, Vite.
 
 **Backend** — [backend/](backend/): FastAPI + SQLAlchemy, implementing
 `openapi.yaml`. Runs on SQLite by default; point `KANBAN_DATABASE_URL` at
-another SQLAlchemy-supported database (e.g. Postgres, with the right
-driver installed) to use that instead.
+Postgres (driver included) or another SQLAlchemy-supported database to
+use that instead.
 
 ## Frontend
 
@@ -46,7 +46,22 @@ running locally, and tests. In short:
 
 ## Deployment
 
-Planned as a single container: FastAPI serves the static frontend build
-and the API from one origin, with Postgres behind it. See
+A single container: FastAPI serves the static frontend build and the API
+from one origin, with Postgres behind it. See
 [_docs/deployment-plan.md](_docs/deployment-plan.md) for the steps and
 current status.
+
+To run the production-shaped stack locally, use the root
+[Makefile](Makefile) (needs Docker and the `frontend/` submodule checked
+out):
+
+    make up      # docker compose up --build: app on http://localhost:8000 + Postgres
+    make down    # stop the stack (board data is kept in a named volume)
+    make build   # just build the image
+    make test    # backend tests (SQLite, no Docker needed)
+    make test-pg # backend tests against the Compose Postgres (wipes its data)
+
+The stack is defined in [docker-compose.yml](docker-compose.yml). It runs
+over plain HTTP, so `KANBAN_SECURE_COOKIES` is set to `false` there; a
+real deployment terminates TLS in front of the container and leaves it
+unset.
