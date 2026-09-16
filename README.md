@@ -7,8 +7,9 @@ for collaborative work.
 Built as a project for the [AI Dev Tools
 Zoomcamp](https://aishippingblog.com/p/build-and-ship-a-full-stack-app-with),
 working through a spec-first process: frontend prototype against a mocked
-backend, an API contract extracted from that mock, then a real backend
-implementation and integration — see [_docs/process.md](_docs/process.md).
+backend, an API contract extracted from that mock, a real backend
+implementation and integration, then deployment — see
+[_docs/process.md](_docs/process.md).
 
 See [_docs/specs.md](_docs/specs.md) for the full design spec and
 [openapi.yaml](openapi.yaml) for the API contract.
@@ -42,3 +43,10 @@ running locally, and tests. In short:
     cd backend
     make sync
     make run
+
+## Deployment
+
+Planned as a single container: FastAPI serves the static frontend build
+and the API from one origin, with Postgres behind it. See
+[_docs/deployment-plan.md](_docs/deployment-plan.md) for the steps and
+current status.

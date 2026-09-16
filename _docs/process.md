@@ -7,9 +7,10 @@ each.
 
 ## Stages
 
+Stages 1–5 are done; stage 6 is in progress.
+
 1. **Frontend prototype** — a mocked-backend React build per
    [frontend_specs.md](frontend_specs.md), built and iterated via Lovable.
-   This stage is already underway there; this doc doesn't restate it.
 2. **API contract** — extract an `openapi.yaml` from the frontend's mock
    client (`src/api/mockClient.ts`), defining the real endpoints and
    shapes needed to swap the mock for a real backend.
@@ -20,17 +21,23 @@ each.
 5. **Integration** — swap `mockClient.ts`'s internals for real API calls
    (per its design in frontend_specs.md, no UI changes needed), and
    verify the app end-to-end against the real backend.
+6. **Deployment** — one container (FastAPI serving the static frontend
+   build), Postgres, Docker Compose locally, GitHub Actions CI/CD. Broken
+   into steps in [deployment-plan.md](deployment-plan.md).
 
 ## Tools
 
-- **Claude Code** — default agent for backend, persistence, and
-  integration work.
-- **Lovable** (MCP plugin) — builds and iterates the frontend.
+- **Claude Code** — default agent for backend, persistence,
+  integration, and deployment work.
+- **Lovable** (MCP plugin) — builds and iterates the frontend, including
+  its build configuration.
 - **Codex** (plugin) — code review. Run a Codex review at the end of
   every stage, before moving to the next.
 
 ## Out of scope
 
 No backlog file, task template, or per-role agent instructions. Work is
-driven directly from [specs.md](specs.md) and
-[frontend_specs.md](frontend_specs.md).
+driven directly from [specs.md](specs.md),
+[frontend_specs.md](frontend_specs.md), and
+[deployment-plan.md](deployment-plan.md). Finished plans and resolved
+issue logs move to [archive/](archive/) and are not kept current.

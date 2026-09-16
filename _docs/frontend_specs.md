@@ -1,14 +1,36 @@
 # Mini Kanban Board — Frontend Spec (Lovable, mocked backend)
 
-This spec describes the frontend-only build for Lovable. It implements the
-UI and interactions from [specs.md](specs.md) against a fully
-mocked backend — **no real backend, network calls, or persistence in this
-pass.** Every "backend" behavior described below lives behind one module so
-a real API can be swapped in later without touching UI code.
+This spec describes the frontend build for Lovable. It implements the UI
+and interactions from [specs.md](specs.md), originally against a fully
+mocked backend. That mock layer has since been swapped for real HTTP
+calls to the backend (integration stage in [process.md](process.md)); the
+module boundary described below is unchanged, only its internals are.
 
 ## Stack
 
-React + TypeScript + Tailwind + shadcn/ui.
+React + TypeScript + Tailwind + shadcn/ui, on TanStack Start with
+TanStack Router/Query, built with Vite.
+
+## Build target
+
+The app is deployed as a **static SPA served by the FastAPI backend**
+(see [deployment-plan.md](deployment-plan.md)), not as SSR on Cloudflare
+Workers (the Lovable default). Constraints this puts on the frontend:
+
+- TanStack Start runs in SPA mode with Nitro disabled (`vite.config.ts`):
+  `vite build` produces a plain static folder at `dist/client` with a
+  prerendered `index.html` shell and no server runtime. Serving
+  `index.html` for unknown paths (so deep links and refreshes work) is
+  the backend's responsibility.
+- Everything runs client-side. No TanStack Start server functions
+  (`createServerFn`) or server-only route loaders; all data comes from
+  the backend via `fetch` in `src/api/mockClient.ts`.
+- The API base URL comes from `VITE_API_BASE_URL` at build time
+  (default `http://localhost:8000/api` for local dev; `/api` for the
+  production build, since frontend and API share an origin).
+- `<head>` meta tags (title, description, og:*, twitter:card) from
+  `src/routes/__root.tsx` are baked into the prerendered `index.html`,
+  so link previews keep working without SSR.
 
 ## Mock layer
 
