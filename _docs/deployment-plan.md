@@ -96,7 +96,7 @@ container is removed; step 4 wires up Postgres.
   down` then `up` again — the board (and the session cookie, since
   sessions are in the database too) survived the restart.
 
-### 5. CI (GitHub Actions)
+### 5. CI (GitHub Actions) — done
 
 On every push and PR: frontend and backend tests in parallel, then build
 the Docker image and start it with Compose.
@@ -119,6 +119,28 @@ step 5 checks persistence after a reload, not a live push.
 
 Cover the viewer case separately (a viewer link opens the card read-only,
 no save action, no drag) rather than branching it into the same test.
+
+Implemented in [.github/workflows/ci.yml](../.github/workflows/ci.yml):
+`backend-test` (`uv run pytest`) and `frontend-test` (`bun run build`) run
+in parallel; `e2e` waits on both, then runs `docker compose up --build
+-d`, polls `/api/health`, and runs the Playwright suite in
+[e2e/](../e2e/) — a standalone Node/npm project, independent of the
+frontend submodule's Bun toolchain — against the running container,
+uploading the HTML report as an artifact on failure.
+
+`frontend-test` builds rather than lints: `bun run lint` (the only
+test-like script the frontend submodule exposes — it has no unit-test
+runner) currently fails on 38 pre-existing `prettier/prettier` errors
+(formatting only, no logic) across 9 already-committed files, and this
+repo doesn't edit `frontend/` locally (it's Lovable-managed). Once
+Lovable reformats those files and the submodule pointer is bumped on a
+branch, add `bun run lint` back as a blocking step in `frontend-test`.
+
+Verified locally by running the same sequence outside of CI: `docker
+compose up --build -d`, poll `/api/health`, then `npx playwright test`
+from `e2e/` against `http://localhost:8000` — both the editor
+sharing-flow test and the viewer read-only test pass against the built
+image.
 
 ### 6. Deploy
 
