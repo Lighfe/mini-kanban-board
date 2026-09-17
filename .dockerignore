@@ -8,6 +8,7 @@ frontend/.output
 backend/.venv
 backend/kanban.db
 backend/tests
+e2e
 **/__pycache__
 **/.pytest_cache
 *.log
