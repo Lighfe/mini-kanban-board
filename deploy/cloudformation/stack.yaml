@@ -99,8 +99,115 @@ Resources:
       DeletionProtection: false
       BackupRetentionPeriod: 0
 
+  Ec2InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub kanban-app-${AWS::StackName}-ec2
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: kanban-app-ec2
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # No resource type for GetAuthorizationToken.
+              - Sid: EcrAuth
+                Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: "*"
+              - Sid: EcrPull
+                Effect: Allow
+                Action:
+                  - ecr:BatchGetImage
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchCheckLayerAvailability
+                Resource:
+                  - !Sub
+                    - arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${RepoName}
+                    - RepoName: !Select [1, !Split ["/", !Ref EcrRepositoryUri]]
+              - Sid: DbPassword
+                Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref DbSecret
+
+  Ec2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref Ec2InstanceRole
+
+  Ec2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t4g.micro
+      ImageId: "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64}}"
+      IamInstanceProfile: !Ref Ec2InstanceProfile
+      SecurityGroupIds:
+        - !Ref Ec2SecurityGroup
+      SubnetId: !Select [0, !Ref SubnetIds]
+      Tags:
+        - Key: Name
+          Value: !Sub kanban-app-${AWS::StackName}
+      UserData:
+        Fn::Base64:
+          Fn::Sub: |
+            #!/bin/bash
+            set -euo pipefail
+            dnf install -y docker
+            systemctl enable --now docker
+
+            curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-aarch64 \
+              -o /usr/local/bin/docker-compose
+            chmod +x /usr/local/bin/docker-compose
+
+            DB_PASSWORD=$(aws secretsmanager get-secret-value \
+              --region ${AWS::Region} --secret-id ${DbSecret} \
+              --query SecretString --output text \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin)["password"])')
+            DB_URL="postgresql+psycopg://kanban:${!DB_PASSWORD}@${DbInstance.Endpoint.Address}:5432/kanban"
+
+            aws ecr get-login-password --region ${AWS::Region} | \
+              docker login --username AWS --password-stdin ${EcrRepositoryUri}
+
+            mkdir -p /opt/kanban
+            cat > /opt/kanban/docker-compose.yml <<COMPOSE
+            services:
+              app:
+                image: ${EcrRepositoryUri}:${ImageTag}
+                environment:
+                  KANBAN_DATABASE_URL: "${!DB_URL}"
+                restart: unless-stopped
+              caddy:
+                image: caddy:2
+                ports:
+                  - "80:80"
+                  - "443:443"
+                volumes:
+                  - /opt/kanban/Caddyfile:/etc/caddy/Caddyfile
+                  - caddy_data:/data
+                restart: unless-stopped
+            volumes:
+              caddy_data:
+            COMPOSE
+
+            cat > /opt/kanban/Caddyfile <<CADDY
+            ${SubdomainName} {
+              reverse_proxy app:8000
+              tls ${AdminEmail}
+            }
+            CADDY
+
+            cd /opt/kanban && docker-compose up -d
+
 Outputs:
   DBSecretArn:
     Value: !Ref DbSecret
   DBEndpointAddress:
     Value: !GetAtt DbInstance.Endpoint.Address
+  InstancePublicIp:
+    Value: !GetAtt Ec2Instance.PublicIp
