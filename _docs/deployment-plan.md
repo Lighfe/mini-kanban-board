@@ -96,23 +96,65 @@ container is removed; step 4 wires up Postgres.
   down` then `up` again — the board (and the session cookie, since
   sessions are in the database too) survived the restart.
 
-### 5. CI (GitHub Actions)
+### 5. CI (GitHub Actions) — done
 
-On every push and PR: check out with submodules, run the backend tests,
-build the Docker image, start it with Compose, and smoke-test
-`GET /api/health` plus the frontend root. End-to-end browser tests
-(Playwright, as in the course guide) are a stretch goal, not a blocker;
-the spec's interaction-layer tests in [specs.md](specs.md#testing-approach)
-are the candidates.
+On every push and PR: frontend and backend tests in parallel, then build
+the Docker image and start it with Compose.
+
+Then an end-to-end Playwright test in `e2e/` at the repo root, run
+against that running Compose stack, covering the sharing flow:
+
+1. Sign up as user A (session 1); create a board and a card explicitly
+   (don't rely on seeded sample data).
+2. From board settings, create an editor share link and copy its
+   token/URL.
+3. In a separate browser context (session 2), open the share link
+   unsigned-in first (covers sign-up-then-redeem), sign up as user B,
+   and confirm it lands on user A's board as editor.
+4. As user B, move the card to a different column.
+5. Reload user A's session and confirm the move is visible.
+
+Per [specs.md](specs.md#concurrency) this app has no real-time sync, so
+step 5 checks persistence after a reload, not a live push.
+
+Cover the viewer case separately (a viewer link opens the card read-only,
+no save action, no drag) rather than branching it into the same test.
+
+Implemented in [.github/workflows/ci.yml](../.github/workflows/ci.yml):
+`backend-test` (`uv run pytest`) and `frontend-test` (`bun run build`) run
+in parallel; `e2e` waits on both, then runs `docker compose up --build
+-d`, polls `/api/health`, and runs the Playwright suite in
+[e2e/](../e2e/) — a standalone Node/npm project, independent of the
+frontend submodule's Bun toolchain — against the running container,
+uploading the HTML report as an artifact on failure.
+
+`frontend-test` builds rather than lints: `bun run lint` (the only
+test-like script the frontend submodule exposes — it has no unit-test
+runner) currently fails on 38 pre-existing `prettier/prettier` errors
+(formatting only, no logic) across 9 already-committed files, and this
+repo doesn't edit `frontend/` locally (it's Lovable-managed). Once
+Lovable reformats those files and the submodule pointer is bumped on a
+branch, add `bun run lint` back as a blocking step in `frontend-test`.
+
+Verified locally by running the same sequence outside of CI: `docker
+compose up --build -d`, poll `/api/health`, then `npx playwright test`
+from `e2e/` against `http://localhost:8000` — both the editor
+sharing-flow test and the viewer read-only test pass against the built
+image.
 
 ### 6. Deploy
 
-Push the image to a registry and run it with a managed Postgres and TLS
-in front. The course guide uses AWS (CloudFormation, single EC2
-instance, GitHub Actions deploying via OIDC). That's the default; a
-platform like Render, Railway, or Fly.io is a simpler alternative with
-the same container. Deploy on push to `main` after CI passes, then
-verify `GET /api/health` on the public URL.
+Push the image to a registry and run it behind a managed Postgres, TLS,
+and a deployment role scoped to just this deploy (OIDC, per the course
+guide). The course guide uses AWS (CloudFormation, single EC2 instance);
+that's the default, with Render, Railway, or Fly.io as a simpler
+alternative running the same container. Note the deviation from the
+guide either way: it runs Postgres on the same instance, this plan uses
+a managed database instead. Pick one before implementing this step.
+`KANBAN_SECURE_COOKIES` must stay at its default (unset) in production —
+Compose only disables it for local plain-HTTP use. Deploy on push to
+`main` after CI passes, then poll `GET /api/health` until it returns 200
+before declaring the deploy done.
 
 Production configuration:
 
