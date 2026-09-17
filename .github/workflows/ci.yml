@@ -1,7 +1,12 @@
 name: CI
 
 on:
+  # A branch with an open PR would otherwise get two runs per push (one
+  # for `push`, one for `pull_request`, same commit) — restrict `push` to
+  # main so post-merge commits are still covered, and let `pull_request`
+  # own everything before that.
   push:
+    branches: [main]
   pull_request:
 
 concurrency:
