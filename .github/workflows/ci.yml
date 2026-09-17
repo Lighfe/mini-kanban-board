@@ -15,8 +15,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-        with:
-          working-directory: backend
       - name: Install dependencies
         working-directory: backend
         run: uv sync
