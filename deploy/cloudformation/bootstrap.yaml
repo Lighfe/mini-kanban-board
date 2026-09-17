@@ -1,0 +1,224 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  One-time account setup for the mini-kanban-board deploy pipeline: the
+  GitHub OIDC provider, the scoped IAM role GitHub Actions assumes to run
+  `deploy`/`destroy`, and the persistent ECR repository the app image is
+  pushed to. Applied once by hand with an AdminAccess/SSO profile — see
+  deploy/README.md. Not applied by CI (CI has no role to assume until
+  this exists).
+
+Parameters:
+  GitHubRepo:
+    Type: String
+    Default: Lighfe/mini-kanban-board
+    Description: "<owner>/<repo> allowed to assume the deploy role."
+  HostedZoneId:
+    Type: String
+    Description: Route 53 hosted zone ID for lighfe.dev (from `aws route53 list-hosted-zones-by-name`).
+  CreateOidcProvider:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: >
+      Set to "false" if token.actions.githubusercontent.com is already
+      registered as an OIDC provider in this account (only one provider
+      per URL is allowed per account).
+
+Conditions:
+  ShouldCreateOidcProvider: !Equals [!Ref CreateOidcProvider, "true"]
+
+Resources:
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: ShouldCreateOidcProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        # SHA1 fingerprints of token.actions.githubusercontent.com's CA
+        # chain (root: ISRG Root X1; intermediate as served), fetched
+        # live at authoring time via:
+        #   openssl s_client -connect token.actions.githubusercontent.com:443 \
+        #     -servername token.actions.githubusercontent.com -showcerts
+        # AWS validates the provider's TLS chain directly rather than
+        # relying on this list, but the field is required and non-empty.
+        # Re-run the command above and update this list if GitHub Actions
+        # OIDC sign-in ever starts failing after a GitHub CA rotation.
+        - cabd2a79a1076a31f21d253635cb039d4329a5e8
+        - 2d74d6dfd96eea55ad7baafa0d3c6552b2dadc37
+
+  EcrRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: kanban
+      ImageTagMutability: MUTABLE
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [{
+              "rulePriority": 1,
+              "description": "Keep only the last 5 images",
+              "selection": {
+                "tagStatus": "any",
+                "countType": "imageCountMoreThan",
+                "countNumber": 5
+              },
+              "action": { "type": "expire" }
+            }]
+          }
+
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: kanban-app-deploy
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubRepo}:ref:refs/heads/main
+      Policies:
+        - PolicyName: kanban-app-deploy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # CFN stack management, scoped to the one ephemeral app
+              # stack this role is ever allowed to touch.
+              - Sid: CloudFormation
+                Effect: Allow
+                Action: "cloudformation:*"
+                Resource:
+                  - !Sub arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/kanban-app/*
+
+              # EC2 create/describe/delete actions don't support
+              # resource-level IAM restriction, so this is necessarily
+              # broad — offset by the fact this role only ever drives
+              # EC2 changes indirectly, through `cloudformation deploy`
+              # against the one scoped stack above.
+              - Sid: Ec2
+                Effect: Allow
+                Action:
+                  - ec2:RunInstances
+                  - ec2:TerminateInstances
+                  - ec2:DescribeInstances
+                  - ec2:CreateSecurityGroup
+                  - ec2:DeleteSecurityGroup
+                  - ec2:DescribeSecurityGroups
+                  - ec2:AuthorizeSecurityGroupIngress
+                  - ec2:AuthorizeSecurityGroupEgress
+                  - ec2:RevokeSecurityGroupIngress
+                  - ec2:RevokeSecurityGroupEgress
+                  - ec2:DescribeSubnets
+                  - ec2:DescribeVpcs
+                  - ec2:DescribeImages
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:CreateTags
+                  - ec2:DeleteTags
+                  - ec2:DescribeTags
+                Resource: "*"
+
+              # RDS instance/subnet-group creation likewise has no
+              # resource-level restriction prior to the resource
+              # existing.
+              - Sid: Rds
+                Effect: Allow
+                Action:
+                  - rds:CreateDBInstance
+                  - rds:DeleteDBInstance
+                  - rds:DescribeDBInstances
+                  - rds:CreateDBSubnetGroup
+                  - rds:DeleteDBSubnetGroup
+                  - rds:DescribeDBSubnetGroups
+                  - rds:AddTagsToResource
+                  - rds:ListTagsForResource
+                Resource: "*"
+
+              - Sid: Iam
+                Effect: Allow
+                Action:
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:GetRole
+                  - iam:PutRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:GetRolePolicy
+                  - iam:TagRole
+                  - iam:CreateInstanceProfile
+                  - iam:DeleteInstanceProfile
+                  - iam:GetInstanceProfile
+                  - iam:AddRoleToInstanceProfile
+                  - iam:RemoveRoleFromInstanceProfile
+                  - iam:PassRole
+                Resource:
+                  - !Sub arn:aws:iam::${AWS::AccountId}:role/kanban-app-*
+                  - !Sub arn:aws:iam::${AWS::AccountId}:instance-profile/kanban-app-*
+
+              - Sid: Ssm
+                Effect: Allow
+                Action:
+                  - ssm:PutParameter
+                  - ssm:DeleteParameter
+                  - ssm:GetParameter
+                  - ssm:AddTagsToResource
+                Resource:
+                  - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/kanban-app/*
+
+              - Sid: SecretsManagerScoped
+                Effect: Allow
+                Action:
+                  - secretsmanager:CreateSecret
+                  - secretsmanager:DeleteSecret
+                  - secretsmanager:DescribeSecret
+                  - secretsmanager:TagResource
+                Resource:
+                  - !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:kanban-app-*
+
+              # No resource type for this action.
+              - Sid: SecretsManagerUnscoped
+                Effect: Allow
+                Action: secretsmanager:GetRandomPassword
+                Resource: "*"
+
+              # No resource type for GetAuthorizationToken.
+              - Sid: EcrAuth
+                Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: "*"
+
+              - Sid: EcrRepo
+                Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                  - ecr:PutImage
+                  - ecr:BatchGetImage
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:DescribeRepositories
+                Resource:
+                  - !GetAtt EcrRepository.Arn
+
+              - Sid: Route53
+                Effect: Allow
+                Action:
+                  - route53:ChangeResourceRecordSets
+                  - route53:ListResourceRecordSets
+                  - route53:GetHostedZone
+                Resource:
+                  - !Sub arn:aws:route53:::hostedzone/${HostedZoneId}
+
+Outputs:
+  DeployRoleArn:
+    Description: Set this as the GitHub Actions repo secret AWS_DEPLOY_ROLE_ARN.
+    Value: !GetAtt DeployRole.Arn
+  EcrRepositoryUri:
+    Description: Persistent ECR repository the deploy workflow pushes images to.
+    Value: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${EcrRepository}

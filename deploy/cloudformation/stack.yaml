@@ -1,0 +1,213 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Ephemeral per-run app stack for mini-kanban-board: EC2 (app + Caddy
+  containers), RDS Postgres, and the security groups/secrets/parameter
+  tying them together. Created and destroyed on every `deploy`/`destroy`
+  run — see _docs/deployment-plan.md step 6. Deployed by the scoped role
+  from deploy/cloudformation/bootstrap.yaml, never by hand with
+  AdminAccess.
+
+Parameters:
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC to launch the EC2 instance and RDS subnet group into.
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: >
+      Exactly two subnets in different AZs (RDS requires a subnet group
+      spanning >=2 AZs even for a single-AZ instance). The EC2 instance
+      launches into the first one.
+  EcrRepositoryUri:
+    Type: String
+    Description: URI of the persistent ECR repo (bootstrap stack output), without a tag.
+  ImageTag:
+    Type: String
+    Description: Image tag to run (the deploying commit's git SHA).
+  SubdomainName:
+    Type: String
+    Default: katban-10x-cat-productivity.lighfe.dev
+    Description: Public hostname Caddy requests a TLS cert for.
+  AdminEmail:
+    Type: String
+    Default: juliandralle@gmail.com
+    Description: Contact address for Let's Encrypt ACME registration.
+
+Resources:
+  Ec2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: kanban-app EC2 instance - inbound HTTPS/HTTP (ACME challenge)
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: Let's Encrypt HTTP-01 challenge
+
+  RdsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: kanban-app RDS - inbound Postgres from the app instance only
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref Ec2SecurityGroup
+          Description: Postgres from the EC2 app instance
+
+  DbSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: kanban-app RDS subnet group
+      SubnetIds: !Ref SubnetIds
+
+  DbSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub kanban-app-${AWS::StackName}-db
+      Description: Master password for the kanban-app RDS instance.
+      GenerateSecretString:
+        SecretStringTemplate: '{"username":"kanban"}'
+        GenerateStringKey: password
+        PasswordLength: 32
+        ExcludeCharacters: '"@/\'
+
+  DbInstance:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    Properties:
+      Engine: postgres
+      EngineVersion: "17.6"
+      DBInstanceClass: db.t4g.micro
+      AllocatedStorage: "20"
+      StorageType: gp3
+      MultiAZ: false
+      PubliclyAccessible: false
+      DBName: kanban
+      MasterUsername: kanban
+      MasterUserPassword: !Sub "{{resolve:secretsmanager:${DbSecret}:SecretString:password}}"
+      DBSubnetGroupName: !Ref DbSubnetGroup
+      VPCSecurityGroups:
+        - !Ref RdsSecurityGroup
+      DeletionProtection: false
+      BackupRetentionPeriod: 0
+
+  Ec2InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub kanban-app-${AWS::StackName}-ec2
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: kanban-app-ec2
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # No resource type for GetAuthorizationToken.
+              - Sid: EcrAuth
+                Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: "*"
+              - Sid: EcrPull
+                Effect: Allow
+                Action:
+                  - ecr:BatchGetImage
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchCheckLayerAvailability
+                Resource:
+                  - !Sub
+                    - arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${RepoName}
+                    - RepoName: !Select [1, !Split ["/", !Ref EcrRepositoryUri]]
+              - Sid: DbPassword
+                Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref DbSecret
+
+  Ec2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref Ec2InstanceRole
+
+  Ec2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t4g.micro
+      ImageId: "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64}}"
+      IamInstanceProfile: !Ref Ec2InstanceProfile
+      SecurityGroupIds:
+        - !Ref Ec2SecurityGroup
+      SubnetId: !Select [0, !Ref SubnetIds]
+      Tags:
+        - Key: Name
+          Value: !Sub kanban-app-${AWS::StackName}
+      UserData:
+        Fn::Base64:
+          Fn::Sub: |
+            #!/bin/bash
+            set -euo pipefail
+            dnf install -y docker
+            systemctl enable --now docker
+
+            curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-aarch64 \
+              -o /usr/local/bin/docker-compose
+            chmod +x /usr/local/bin/docker-compose
+
+            DB_PASSWORD=$(aws secretsmanager get-secret-value \
+              --region ${AWS::Region} --secret-id ${DbSecret} \
+              --query SecretString --output text \
+              | python3 -c 'import json,sys; print(json.load(sys.stdin)["password"])')
+            DB_URL="postgresql+psycopg://kanban:${!DB_PASSWORD}@${DbInstance.Endpoint.Address}:5432/kanban"
+
+            aws ecr get-login-password --region ${AWS::Region} | \
+              docker login --username AWS --password-stdin ${EcrRepositoryUri}
+
+            mkdir -p /opt/kanban
+            cat > /opt/kanban/docker-compose.yml <<COMPOSE
+            services:
+              app:
+                image: ${EcrRepositoryUri}:${ImageTag}
+                environment:
+                  KANBAN_DATABASE_URL: "${!DB_URL}"
+                restart: unless-stopped
+              caddy:
+                image: caddy:2
+                ports:
+                  - "80:80"
+                  - "443:443"
+                volumes:
+                  - /opt/kanban/Caddyfile:/etc/caddy/Caddyfile
+                  - caddy_data:/data
+                restart: unless-stopped
+            volumes:
+              caddy_data:
+            COMPOSE
+
+            cat > /opt/kanban/Caddyfile <<CADDY
+            ${SubdomainName} {
+              reverse_proxy app:8000
+              tls ${AdminEmail}
+            }
+            CADDY
+
+            cd /opt/kanban && docker-compose up -d
+
+Outputs:
+  DBSecretArn:
+    Value: !Ref DbSecret
+  DBEndpointAddress:
+    Value: !GetAtt DbInstance.Endpoint.Address
+  InstancePublicIp:
+    Value: !GetAtt Ec2Instance.PublicIp
