@@ -144,34 +144,63 @@ image.
 
 ### 6. Deploy
 
-Push the image to a registry and run it behind a managed Postgres, TLS,
-and a deployment role scoped to just this deploy (OIDC, per the course
-guide). The course guide uses AWS (CloudFormation, single EC2 instance);
-that's the default, with Render, Railway, or Fly.io as a simpler
-alternative running the same container. Note the deviation from the
-guide either way: it runs Postgres on the same instance, this plan uses
-a managed database instead. Pick one before implementing this step.
-`KANBAN_SECURE_COOKIES` must stay at its default (unset) in production —
-Compose only disables it for local plain-HTTP use. Deploy on push to
-`main` after CI passes, then poll `GET /api/health` until it returns 200
-before declaring the deploy done.
+**Hosting: AWS, single CloudFormation stack.** A personal AdminAccess
+IAM user via AWS SSO handles manual account setup/debugging; it is
+separate from the scoped deploy role CI uses (below). CloudFormation
+(not Terraform) is the IaC tool — it matches the course guide and keeps
+learning effort on the CI/CD piece rather than splitting it across a
+new IaC syntax too.
+
+One stack holds EC2 (t3.micro/t4g.micro, free-tier eligible, running
+the existing Docker image) and RDS Postgres (db.t4g.micro, single-AZ,
+20GB gp3), created and destroyed together. Postgres data is lost on
+each teardown — acceptable for now, since this runs ephemeral (most
+sessions under 2 hours, never longer than 3 days), not continuously.
+Splitting into a persistent-RDS stack plus an ephemeral-EC2 stack is a
+possible future evolution if data ever needs to survive between runs,
+but isn't built now.
+
+No load balancer. Caddy runs as a second container alongside the app
+container on the EC2 instance, terminating TLS via Let's Encrypt and
+reverse-proxying to the app container's internal port — this matches
+the plan's single-container/single-instance shape more closely than
+adding an ALB. TLS needs a domain: a personally-owned domain (e.g.
+`lighfe.dev`, ~$12-15/yr), reused across future projects via
+subdomains, with this project on one subdomain of it. The DNS A record
+is updated to the new EC2 instance's public IP on each deploy (no
+Elastic IP reservation, so the IP changes per create/destroy cycle).
+
+**Deploy trigger: manual, not push-to-main.** Given the short,
+infrequent usage pattern, an always-on auto-deploy on every push
+doesn't fit. Instead, a GitHub Actions workflow triggered manually via
+`workflow_dispatch`, with two entry points: `deploy` (build+push image,
+`aws cloudformation deploy`, update the DNS record) and `destroy`
+(`aws cloudformation delete-stack`). This still exercises the CI/CD +
+OIDC mechanics, which is the actual learning goal here — GitHub OIDC
+federates to a scoped AWS IAM role with only the deploy/destroy
+permissions needed, no long-lived AWS access keys stored in GitHub.
+
+Secrets (`KANBAN_DATABASE_URL` etc.) come from CloudFormation outputs
+or SSM Parameter Store, not hardcoded into the template or GitHub
+secrets; GitHub Actions only holds the OIDC role ARN.
+`KANBAN_SECURE_COOKIES` must stay at its default (unset) in production
+— Compose only disables it for local plain-HTTP use. After a `deploy`
+run, poll `GET /api/health` until it returns 200 before declaring the
+deploy done.
 
 Production configuration:
 
 | Variable | Production value |
 | --- | --- |
-| `KANBAN_DATABASE_URL` | Postgres URL (secret) |
+| `KANBAN_DATABASE_URL` | Postgres URL (secret, from CloudFormation output / SSM) |
 | `KANBAN_STATIC_DIR` | path to the built frontend inside the image |
 | `KANBAN_SECURE_COOKIES` | unset (defaults to `true`) |
 | `KANBAN_CORS_ORIGINS` | unset unless a Lovable preview should hit prod |
-
-## Open decisions
-
-- **Hosting provider.** AWS per the course, or a simpler PaaS. Decide
-  before step 6; steps 1–5 are provider-independent.
 
 ## Out of scope
 
 Multiple workers or horizontal scaling (blocked by the request lock),
 database migrations tooling (tables are created at startup; revisit when
-the schema first changes after launch), and custom domains.
+the schema first changes after launch), an Elastic IP or other stable
+address across redeploys, and a persistent database across
+deploy/destroy cycles (see step 6).
