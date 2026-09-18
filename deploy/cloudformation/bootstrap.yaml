@@ -168,15 +168,15 @@ Resources:
                   - !Sub arn:aws:iam::${AWS::AccountId}:role/kanban-app-*
                   - !Sub arn:aws:iam::${AWS::AccountId}:instance-profile/kanban-app-*
 
-              - Sid: Ssm
+              # CloudFormation resolves the {{resolve:ssm:...}} dynamic
+              # reference for the AMI ID at changeset-creation time,
+              # using the deploying principal's own permissions - that
+              # parameter is AWS-owned/public (no account ID segment).
+              - Sid: SsmPublicAmiLookup
                 Effect: Allow
-                Action:
-                  - ssm:PutParameter
-                  - ssm:DeleteParameter
-                  - ssm:GetParameter
-                  - ssm:AddTagsToResource
+                Action: ssm:GetParameters
                 Resource:
-                  - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/kanban-app/*
+                  - !Sub arn:aws:ssm:${AWS::Region}::parameter/aws/service/ami-amazon-linux-latest/*
 
               - Sid: SecretsManagerScoped
                 Effect: Allow
@@ -185,6 +185,11 @@ Resources:
                   - secretsmanager:DeleteSecret
                   - secretsmanager:DescribeSecret
                   - secretsmanager:TagResource
+                  # CloudFormation also resolves the
+                  # {{resolve:secretsmanager:...}} dynamic reference
+                  # (RDS master password) using this role's permissions
+                  # when it executes the changeset.
+                  - secretsmanager:GetSecretValue
                 Resource:
                   - !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:kanban-app-*
 
