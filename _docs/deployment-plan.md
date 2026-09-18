@@ -231,16 +231,37 @@ work, beyond what's summarized above:
   record isn't in place yet, the lookup fails (`NXDOMAIN`) and Caddy
   doesn't retry for several minutes, serving a TLS handshake error in
   the meantime even though the app itself is healthy.
+- **On a brand new instance, `UserData` itself is still running when
+  SSM first becomes reachable.** The SSM agent registers, and the
+  workflow's SSM push can start, before `dnf install -y docker` (and
+  then `UserData`'s own closing `docker-compose up -d`) has finished —
+  racing the workflow's `docker-compose up -d` against `UserData`'s
+  gave `docker: command not found` and then, once that was papered
+  over with a readiness check, `Conflict: container name ... already in
+  use` (both trying to create the same containers). The real fix is
+  `cloud-init status --wait`, which blocks until every `UserData` stage
+  has actually finished; on a normal redeploy against a warm instance
+  cloud-init already finished long ago, so this returns immediately.
 
-Verified with a real `deploy` → `destroy` → `deploy` cycle: `deploy`
-built and pushed the image, stood up the CloudFormation stack, and
-`GET https://katban-10x-cat-productivity.lighfe.dev/api/health` returned
-`{"status":"ok"}` (200) over a browser-trusted HTTPS connection, with the
-frontend shell loading too; `destroy` removed the DNS record and deleted
-the stack, confirmed via `aws cloudformation describe-stacks` returning
-`ValidationError: ... does not exist`; a second clean `deploy` afterward
-passed end to end with no manual steps, confirming the fixes above hold
-up on a from-scratch run, not just a patched-up one.
+This took several rounds to get right, including two rounds where a
+run that *looked* clean turned out not to be: a "successful" `deploy`
+that passed because a leftover, wrongly-ordered duplicate step
+happened to be masked by a correctly-ordered one right after it, and a
+docker-readiness check that fixed one symptom of the `UserData` race
+above without fixing the actual race. A Codex review of the incident
+log itself (not just the code) is what caught the first of those; a
+second, live re-test is what caught the second. Final verification was
+a real `deploy` → `destroy` → `deploy` cycle from a stack destroyed
+immediately beforehand (not a warm, already-working instance):
+`deploy` built and pushed the image, stood up the CloudFormation
+stack, pushed the compose config over SSM, and
+`GET https://katban-10x-cat-productivity.lighfe.dev/api/health`
+returned `{"status":"ok"}` (200) over a browser-trusted HTTPS
+connection within seconds of the SSM push completing (no manual
+intervention, no retry needed), with the frontend shell loading too;
+`destroy` then removed the DNS record and deleted the stack, confirmed
+via `aws cloudformation describe-stacks` returning
+`ValidationError: ... does not exist`.
 
 ## Out of scope
 
