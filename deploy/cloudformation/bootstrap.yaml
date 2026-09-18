@@ -170,7 +170,13 @@ Resources:
                   - iam:DetachRolePolicy
                   - iam:PassRole
                 Resource:
-                  - !Sub arn:aws:iam::${AWS::AccountId}:role/kanban-app-*
+                  # "-ec2" suffix, not a bare "kanban-app-*" prefix:
+                  # this role's own name (kanban-app-deploy) matches
+                  # "kanban-app-*" too, which would let it grant itself
+                  # arbitrary permissions via PutRolePolicy/
+                  # AttachRolePolicy on its own ARN - a real self-escalation
+                  # path, not just theoretical (caught in review).
+                  - !Sub arn:aws:iam::${AWS::AccountId}:role/kanban-app-*-ec2
                   - !Sub arn:aws:iam::${AWS::AccountId}:instance-profile/kanban-app-*
 
               # CloudFormation resolves the {{resolve:ssm:...}} dynamic
@@ -203,6 +209,26 @@ Resources:
               - Sid: SecretsManagerUnscoped
                 Effect: Allow
                 Action: secretsmanager:GetRandomPassword
+                Resource: "*"
+
+              # EC2 UserData only runs once at first boot - it doesn't
+              # re-run on the stop/modify/start cycle CloudFormation
+              # uses for a UserData-only update (e.g. a new ImageTag on
+              # an existing instance), so the deploy workflow instead
+              # pushes each deploy's compose config over SSM RunCommand
+              # after the CFN update completes.
+              - Sid: SsmRunCommand
+                Effect: Allow
+                Action: ssm:SendCommand
+                Resource:
+                  - !Sub arn:aws:ssm:${AWS::Region}::document/AWS-RunShellScript
+                  - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
+              # No resource type for these read actions.
+              - Sid: SsmRunCommandRead
+                Effect: Allow
+                Action:
+                  - ssm:GetCommandInvocation
+                  - ssm:ListCommandInvocations
                 Resource: "*"
 
               # No resource type for GetAuthorizationToken.

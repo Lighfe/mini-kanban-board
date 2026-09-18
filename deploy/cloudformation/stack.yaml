@@ -224,3 +224,12 @@ Outputs:
     Value: !GetAtt DbInstance.Endpoint.Address
   InstancePublicIp:
     Value: !GetAtt Ec2Instance.PublicIp
+  InstanceId:
+    Description: >
+      Consumed by the deploy workflow's SSM step - UserData only runs
+      once at first boot (cloud-init doesn't re-run it on the
+      stop/modify/start cycle CloudFormation uses for a UserData-only
+      update, e.g. a new ImageTag on an existing instance), so every
+      deploy re-applies the compose config over SSM rather than
+      relying on UserData for anything but first-boot bring-up.
+    Value: !Ref Ec2Instance
