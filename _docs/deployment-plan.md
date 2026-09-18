@@ -142,7 +142,7 @@ from `e2e/` against `http://localhost:8000` — both the editor
 sharing-flow test and the viewer read-only test pass against the built
 image.
 
-### 6. Deploy
+### 6. Deploy — done
 
 **Hosting: AWS, single CloudFormation stack.** A personal AdminAccess
 IAM user via AWS SSO handles manual account setup/debugging; it is
@@ -196,6 +196,72 @@ Production configuration:
 | `KANBAN_STATIC_DIR` | path to the built frontend inside the image |
 | `KANBAN_SECURE_COOKIES` | unset (defaults to `true`) |
 | `KANBAN_CORS_ORIGINS` | unset unless a Lovable preview should hit prod |
+
+Implemented in [deploy/](../deploy/): `deploy/cloudformation/bootstrap.yaml`
+(one-time — the GitHub OIDC provider, the scoped `kanban-app-deploy` IAM
+role, and the persistent ECR repo, applied once by hand per
+[deploy/README.md](../deploy/README.md)) and
+`deploy/cloudformation/stack.yaml` (the ephemeral app stack — EC2, RDS,
+security groups, the DB secret, and the EC2 instance role).
+[.github/workflows/deploy.yml](../.github/workflows/deploy.yml) adds
+`workflow_dispatch` with `deploy`/`destroy`.
+
+One correction from the plan as written above: the domain used is
+`katban-10x-cat-productivity.lighfe.dev`, not a plain project subdomain —
+`lighfe.dev` itself is the reusable-across-projects domain the plan
+describes.
+
+Two mechanisms that only became clear while getting a real deploy to
+work, beyond what's summarized above:
+
+- **EC2 `UserData` only runs once, at first boot.** cloud-init does not
+  re-run it on the stop/modify/start cycle CloudFormation uses for an
+  in-place update (e.g. just a new image tag on an existing instance),
+  so relying on it for anything past first-boot bring-up silently no-ops
+  on every deploy after the first. `deploy.yml`'s `deploy` job instead
+  pushes each deploy's compose config to the instance over SSM
+  RunCommand after every CloudFormation update, regardless of whether
+  EC2 was replaced, updated in place, or left untouched; `UserData`
+  still does the identical work for the very first boot of a brand new
+  instance, before SSM's usual sub-minute agent-registration delay would
+  otherwise cost every deploy that time.
+- **DNS must be updated before the containers (re)start, not after.**
+  Caddy requests its TLS certificate as soon as it starts, and the
+  ACME provider does a live DNS lookup as part of that — if the A
+  record isn't in place yet, the lookup fails (`NXDOMAIN`) and Caddy
+  doesn't retry for several minutes, serving a TLS handshake error in
+  the meantime even though the app itself is healthy.
+- **On a brand new instance, `UserData` itself is still running when
+  SSM first becomes reachable.** The SSM agent registers, and the
+  workflow's SSM push can start, before `dnf install -y docker` (and
+  then `UserData`'s own closing `docker-compose up -d`) has finished —
+  racing the workflow's `docker-compose up -d` against `UserData`'s
+  gave `docker: command not found` and then, once that was papered
+  over with a readiness check, `Conflict: container name ... already in
+  use` (both trying to create the same containers). The real fix is
+  `cloud-init status --wait`, which blocks until every `UserData` stage
+  has actually finished; on a normal redeploy against a warm instance
+  cloud-init already finished long ago, so this returns immediately.
+
+This took several rounds to get right, including two rounds where a
+run that *looked* clean turned out not to be: a "successful" `deploy`
+that passed because a leftover, wrongly-ordered duplicate step
+happened to be masked by a correctly-ordered one right after it, and a
+docker-readiness check that fixed one symptom of the `UserData` race
+above without fixing the actual race. A Codex review of the incident
+log itself (not just the code) is what caught the first of those; a
+second, live re-test is what caught the second. Final verification was
+a real `deploy` → `destroy` → `deploy` cycle from a stack destroyed
+immediately beforehand (not a warm, already-working instance):
+`deploy` built and pushed the image, stood up the CloudFormation
+stack, pushed the compose config over SSM, and
+`GET https://katban-10x-cat-productivity.lighfe.dev/api/health`
+returned `{"status":"ok"}` (200) over a browser-trusted HTTPS
+connection within seconds of the SSM push completing (no manual
+intervention, no retry needed), with the frontend shell loading too;
+`destroy` then removed the DNS record and deleted the stack, confirmed
+via `aws cloudformation describe-stacks` returning
+`ValidationError: ... does not exist`.
 
 ## Out of scope
 

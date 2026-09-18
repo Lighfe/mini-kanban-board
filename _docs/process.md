@@ -7,7 +7,7 @@ each.
 
 ## Stages
 
-Stages 1–5 are done; stage 6 is in progress.
+Stages 1–6 are done.
 
 1. **Frontend prototype** — a mocked-backend React build per
    [frontend_specs.md](frontend_specs.md), built and iterated via Lovable.
