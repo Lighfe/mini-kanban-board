@@ -263,6 +263,10 @@ intervention, no retry needed), with the frontend shell loading too;
 via `aws cloudformation describe-stacks` returning
 `ValidationError: ... does not exist`.
 
+This took far more live iteration than it should have — see
+[deploy-postmortem.md](deploy-postmortem.md) for what went wrong and
+what to do differently next time this shape of work comes up.
+
 ## Out of scope
 
 Multiple workers or horizontal scaling (blocked by the request lock),
