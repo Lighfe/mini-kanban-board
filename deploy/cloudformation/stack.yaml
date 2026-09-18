@@ -48,7 +48,7 @@ Resources:
           FromPort: 80
           ToPort: 80
           CidrIp: 0.0.0.0/0
-          Description: Let's Encrypt HTTP-01 challenge
+          Description: Lets Encrypt HTTP-01 challenge
 
   RdsSecurityGroup:
     Type: AWS::EC2::SecurityGroup
