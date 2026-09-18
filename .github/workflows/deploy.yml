@@ -71,6 +71,35 @@ jobs:
               ImageTag="${{ github.sha }}" \
               SubdomainName="${{ env.SUBDOMAIN }}"
 
+      - name: Update DNS A record
+        # Before starting/restarting the containers: Caddy requests its
+        # TLS cert as soon as it starts, and Let's Encrypt/ZeroSSL both
+        # do a live DNS lookup as part of that - if the A record isn't
+        # in place yet, the lookup gives NXDOMAIN, the attempt fails,
+        # and Caddy doesn't retry again for a while (a live deploy
+        # served TLS "internal error" for several minutes because of
+        # this ordering).
+        run: |
+          ip=$(aws cloudformation describe-stacks --stack-name "${{ env.STACK_NAME }}" \
+            --query "Stacks[0].Outputs[?OutputKey=='InstancePublicIp'].OutputValue" \
+            --output text)
+          cat > /tmp/change-batch.json <<JSON
+          {
+            "Changes": [{
+              "Action": "UPSERT",
+              "ResourceRecordSet": {
+                "Name": "${{ env.SUBDOMAIN }}",
+                "Type": "A",
+                "TTL": 60,
+                "ResourceRecords": [{"Value": "$ip"}]
+              }
+            }]
+          }
+          JSON
+          aws route53 change-resource-record-sets \
+            --hosted-zone-id "${{ vars.AWS_HOSTED_ZONE_ID }}" \
+            --change-batch file:///tmp/change-batch.json
+
       - name: Push app update via SSM
         # EC2 UserData only runs once at first boot - it does not
         # re-run on the stop/modify/start cycle CloudFormation uses for
@@ -165,28 +194,6 @@ jobs:
           done
           echo "SSM command did not complete in time" >&2
           exit 1
-
-      - name: Update DNS A record
-        run: |
-          ip=$(aws cloudformation describe-stacks --stack-name "${{ env.STACK_NAME }}" \
-            --query "Stacks[0].Outputs[?OutputKey=='InstancePublicIp'].OutputValue" \
-            --output text)
-          cat > /tmp/change-batch.json <<JSON
-          {
-            "Changes": [{
-              "Action": "UPSERT",
-              "ResourceRecordSet": {
-                "Name": "${{ env.SUBDOMAIN }}",
-                "Type": "A",
-                "TTL": 60,
-                "ResourceRecords": [{"Value": "$ip"}]
-              }
-            }]
-          }
-          JSON
-          aws route53 change-resource-record-sets \
-            --hosted-zone-id "${{ vars.AWS_HOSTED_ZONE_ID }}" \
-            --change-batch file:///tmp/change-batch.json
 
       - name: Wait for health check
         run: |
