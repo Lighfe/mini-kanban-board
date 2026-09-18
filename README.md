@@ -56,7 +56,7 @@ To run the production-shaped stack locally, use the root
 out):
 
     make up      # docker compose up --build: app on http://localhost:8000 + Postgres
-    make down    # stop the stack (board data is kept in a named volume)
+    make down    # stop the local stack (board data is kept in a named volume)
     make build   # just build the image
     make test    # backend tests (SQLite, no Docker needed)
     make test-pg # backend tests against the Compose Postgres (wipes its data)
@@ -65,3 +65,19 @@ The stack is defined in [docker-compose.yml](docker-compose.yml). It runs
 over plain HTTP, so `KANBAN_SECURE_COOKIES` is set to `false` there; a
 real deployment terminates TLS in front of the container and leaves it
 unset.
+
+### Live deployment (AWS)
+
+The app also runs on AWS (EC2 + RDS via CloudFormation), triggered
+manually through a GitHub Actions workflow — see
+[deploy/README.md](deploy/README.md) for the full how-to. Short version:
+
+    gh workflow run deploy.yml -f action=deploy    # bring the site up
+    gh workflow run deploy.yml -f action=destroy   # tear it down
+
+This is a **separate stack from the local `make up`/`make down` one**,
+and unlike the local Docker volume, `destroy` deletes the RDS instance
+with no snapshot — **all board data on the live deployment is lost**
+when you destroy it. The stack is meant to be ephemeral (see
+[_docs/deployment-plan.md](_docs/deployment-plan.md) step 6), so this is
+expected, not a bug.
