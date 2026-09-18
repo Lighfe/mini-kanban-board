@@ -110,6 +110,10 @@ Resources:
             Principal:
               Service: ec2.amazonaws.com
             Action: sts:AssumeRole
+      # Lets `aws ssm start-session` reach the instance for debugging
+      # without opening SSH - no bastion, no inbound port needed.
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
       Policies:
         - PolicyName: kanban-app-ec2
           PolicyDocument:
