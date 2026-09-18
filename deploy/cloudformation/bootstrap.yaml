@@ -8,10 +8,14 @@ Description: >
   this exists).
 
 Parameters:
-  GitHubRepo:
+  GitHubOrg:
     Type: String
-    Default: Lighfe/mini-kanban-board
-    Description: "<owner>/<repo> allowed to assume the deploy role."
+    Default: Lighfe
+    Description: GitHub org/owner allowed to assume the deploy role.
+  GitHubRepoName:
+    Type: String
+    Default: mini-kanban-board
+    Description: GitHub repo (within GitHubOrg) allowed to assume the deploy role.
   HostedZoneId:
     Type: String
     Description: Route 53 hosted zone ID for lighfe.dev (from `aws route53 list-hosted-zones-by-name`).
@@ -83,7 +87,11 @@ Resources:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
               StringLike:
-                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubRepo}:ref:refs/heads/main
+                # GitHub's sub claim includes each org/repo's numeric,
+                # rename-proof ID appended after "@" (e.g.
+                # repo:Lighfe@64253223/mini-kanban-board@1362869053:ref:...),
+                # not just the plain names - wildcard past the "@".
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubOrg}@*/${GitHubRepoName}@*:ref:refs/heads/main
       Policies:
         - PolicyName: kanban-app-deploy
           PolicyDocument:
