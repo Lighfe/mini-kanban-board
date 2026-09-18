@@ -229,6 +229,7 @@ Resources:
                 Action:
                   - ssm:GetCommandInvocation
                   - ssm:ListCommandInvocations
+                  - ssm:DescribeInstanceInformation
                 Resource: "*"
 
               # No resource type for GetAuthorizationToken.
