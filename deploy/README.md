@@ -61,6 +61,18 @@ Run `aws sso login` first if needed.
    requires a subnet group spanning ≥2 AZs even for a single-AZ
    instance. Any two default subnets from the query above work.
 
+5. If this account has never created an RDS instance before, create the
+   RDS service-linked role (a one-time per-account prerequisite; the
+   scoped deploy role deliberately can't do this itself —
+   `iam:CreateServiceLinkedRole` is broad enough that it belongs with
+   the rest of this manual setup, not in CI's permissions):
+
+   ```bash
+   aws iam get-role --role-name AWSServiceRoleForRDS
+   # NoSuchEntity -> create it:
+   aws iam create-service-linked-role --aws-service-name rds.amazonaws.com
+   ```
+
 Re-running step 2 is safe (`cloudformation deploy` is idempotent) if the
 IAM policy in `bootstrap.yaml` ever changes.
 
