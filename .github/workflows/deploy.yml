@@ -130,6 +130,15 @@ jobs:
           cat > /tmp/update-app.sh <<SCRIPT
           #!/bin/bash
           set -euo pipefail
+          # On a brand new instance the SSM agent comes online (and this
+          # command starts running) before UserData's docker
+          # install/start has necessarily finished - wait for the
+          # docker CLI, the compose binary, and a responsive daemon
+          # rather than assuming any of them are ready yet.
+          for i in \$(seq 1 60); do
+            command -v docker-compose >/dev/null 2>&1 && docker info >/dev/null 2>&1 && break
+            sleep 2
+          done
           DB_PASSWORD=\$(aws secretsmanager get-secret-value \
             --region ${{ env.AWS_REGION }} --secret-id $db_secret_arn \
             --query SecretString --output text \
