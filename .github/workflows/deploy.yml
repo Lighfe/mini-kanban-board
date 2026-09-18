@@ -130,15 +130,16 @@ jobs:
           cat > /tmp/update-app.sh <<SCRIPT
           #!/bin/bash
           set -euo pipefail
-          # On a brand new instance the SSM agent comes online (and this
-          # command starts running) before UserData's docker
-          # install/start has necessarily finished - wait for the
-          # docker CLI, the compose binary, and a responsive daemon
-          # rather than assuming any of them are ready yet.
-          for i in \$(seq 1 60); do
-            command -v docker-compose >/dev/null 2>&1 && docker info >/dev/null 2>&1 && break
-            sleep 2
-          done
+          # On a brand new instance the SSM agent comes online, and
+          # this command starts running, well before UserData finishes
+          # - including UserData's own "docker-compose up -d" at the
+          # end. Racing that with this script's own "docker-compose up
+          # -d" hits "container name already in use" (both create the
+          # same containers). cloud-init status --wait blocks until
+          # every UserData stage is done; on a warm instance (a normal
+          # redeploy) cloud-init already finished long ago, so this
+          # returns immediately.
+          cloud-init status --wait >/dev/null 2>&1 || true
           DB_PASSWORD=\$(aws secretsmanager get-secret-value \
             --region ${{ env.AWS_REGION }} --secret-id $db_secret_arn \
             --query SecretString --output text \
