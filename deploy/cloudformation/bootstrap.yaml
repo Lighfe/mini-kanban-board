@@ -185,6 +185,7 @@ Resources:
                 Action:
                   - secretsmanager:CreateSecret
                   - secretsmanager:DeleteSecret
+                  - secretsmanager:UpdateSecret
                   - secretsmanager:DescribeSecret
                   - secretsmanager:TagResource
                   # CloudFormation also resolves the
