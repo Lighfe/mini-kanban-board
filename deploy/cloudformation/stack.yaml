@@ -148,8 +148,11 @@ Resources:
   Ec2Instance:
     Type: AWS::EC2::Instance
     Properties:
-      InstanceType: t4g.micro
-      ImageId: "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64}}"
+      # x86_64, not arm64/t4g: the deploy workflow's `docker build` runs
+      # on GitHub's amd64 runners with no cross-arch step, so the image
+      # is amd64 - running it on Graviton gave "exec format error".
+      InstanceType: t3.micro
+      ImageId: "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}"
       IamInstanceProfile: !Ref Ec2InstanceProfile
       SecurityGroupIds:
         - !Ref Ec2SecurityGroup
@@ -165,7 +168,7 @@ Resources:
             dnf install -y docker
             systemctl enable --now docker
 
-            curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-aarch64 \
+            curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 \
               -o /usr/local/bin/docker-compose
             chmod +x /usr/local/bin/docker-compose
 
