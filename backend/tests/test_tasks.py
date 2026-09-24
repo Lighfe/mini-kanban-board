@@ -119,6 +119,18 @@ def test_archive_and_unarchive_task_roundtrip(client):
     assert unarchived["columnId"] == columns["Backlog"]
 
 
+def test_unarchive_leaves_an_active_task_unchanged(client):
+    # e.g. a repeated Undo click: the task must not jump to the end of its column.
+    board_id, columns = setup_board(client)
+    base = f"/api/boards/{board_id}"
+    first = client.post(f"{base}/columns/{columns['Backlog']}/tasks", json={"title": "A"}).json()
+    client.post(f"{base}/columns/{columns['Backlog']}/tasks", json={"title": "B"})
+
+    response = client.post(f"{base}/tasks/{first['id']}/unarchive")
+    assert response.status_code == 200
+    assert (response.json()["columnId"], response.json()["order"]) == (first["columnId"], first["order"])
+
+
 def test_unarchive_falls_back_to_backlog_when_original_column_deleted(client):
     board_id, columns = setup_board(client)
     task = client.post(f"/api/boards/{board_id}/columns/{columns['Doing']}/tasks", json={"title": "T"}).json()
