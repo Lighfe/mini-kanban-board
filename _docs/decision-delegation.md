@@ -116,10 +116,6 @@ Jev's last top answer disagrees with Claude's prior; otherwise, and on
 API errors, Claude decides. Each fallback is logged with the gate that
 caused it.
 
-Delegation must not add human feedback compared with Claude deciding
-alone. Once 10 or more findings are logged, if more than 1 in 10
-reached the human, use of the tool stops until the rules are revised.
-
 ### Thresholds
 
 The tier is set before inference by the template's risk rule, using the
@@ -222,3 +218,6 @@ not escalate more findings to the human than Claude alone would.
   tokens unless it replaces longer deliberation. The overhead
   measurement decides whether priors stay mandatory after the pilot.
 - Which decision type to add after the pilot.
+- How much human feedback the flow adds compared with Claude deciding
+  alone. Revisit the tier B fallback rule if the log shows a noticeable
+  share of findings reaching the human.

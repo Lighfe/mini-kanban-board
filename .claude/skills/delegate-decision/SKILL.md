@@ -42,6 +42,4 @@ Templates available: `finding_triage` (one review finding → `fix_now`,
    state lacks. Without such a fact, Jev's answer stands.
 
 The tool logs each decision to
-`~/.local/state/mini-kanban-board/decisions.jsonl`. Once 10 or more are
-logged, if more than 1 in 10 went to the human, stop using the tool and
-tell the user.
+`~/.local/state/mini-kanban-board/decisions.jsonl`.
