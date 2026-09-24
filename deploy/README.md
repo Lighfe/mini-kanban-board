@@ -76,6 +76,11 @@ Run `aws sso login` first if needed.
 Re-running step 2 is safe (`cloudformation deploy` is idempotent) if the
 IAM policy in `bootstrap.yaml` ever changes.
 
+The app EC2 role carries the `kanban-app-ec2-boundary` permissions
+boundary from `bootstrap.yaml`, and the deploy role can't add a boundary
+to an existing role. If an app stack created before the boundary existed
+is still up, run the destroy workflow before the next deploy.
+
 ## Running a deploy or a teardown
 
 From the GitHub UI: **Actions → Deploy → Run workflow**, choose `deploy`
