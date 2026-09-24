@@ -32,9 +32,10 @@ project — don't edit it locally; changes go through Lovable.
 Local secrets live outside the repo in
 `~/.config/mini-kanban-board/secrets.env` (file mode 600); variables are
 listed in [secrets.env.example](secrets.env.example). Don't read, print,
-or copy that file. Run commands that need secrets through
-`scripts/with-secrets <command>`. Never commit secrets or add them to
-`.env` files in the repo.
+or copy that file, and don't print the environment of a command run
+with secrets. Pass only the variables a command needs:
+`scripts/with-secrets VAR[,VAR...] -- <command>`. Never commit secrets
+or add them to `.env` files in the repo.
 
 ## Backend conventions
 
