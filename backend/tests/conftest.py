@@ -13,6 +13,28 @@ os.environ.setdefault("KANBAN_SECURE_COOKIES", "false")
 # starts from a clean database.
 os.environ.setdefault("KANBAN_DATABASE_URL", "sqlite:///:memory:")
 
+
+def is_disposable_database(url: str) -> bool:
+    """The suite drops every table, so only run it against in-memory SQLite
+    or a database whose name says it's for tests."""
+    from sqlalchemy.engine import make_url
+
+    parsed = make_url(url)
+    database = parsed.database or ""
+    if parsed.get_backend_name() == "sqlite" and database in ("", ":memory:"):
+        return True
+    return "test" in database.lower()
+
+
+if not is_disposable_database(os.environ["KANBAN_DATABASE_URL"]):
+    import pytest
+
+    pytest.exit(
+        "Refusing to run: the test suite drops every table, and KANBAN_DATABASE_URL "
+        "points at a database whose name doesn't contain 'test'.",
+        returncode=2,
+    )
+
 import pytest
 from fastapi.testclient import TestClient
 

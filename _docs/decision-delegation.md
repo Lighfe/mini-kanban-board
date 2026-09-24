@@ -214,6 +214,26 @@ Questions to answer after about 30 findings:
   alone?
 - Where does the flow help, and where is it overhead?
 
+### Results so far
+
+2026-09-24, 11 findings from two Codex reviews (8 whole-repo, 3 on the
+resulting fix branch):
+
+- Template v1 accepted 0/8: without a review scope, `fix_now` vs
+  `defer` had nothing to judge against (Codex reported this as a
+  template defect on every finding). `context_sufficient` stayed at
+  0.38-0.66.
+- v2 (scope, project context, `accept` split from `reject`, stated
+  consequences) accepted 4/8, but Jev's top answer was `fix_now` on
+  all 8: `defer` required "no effect on correct or safe use", which
+  review findings rarely meet. v3 weighs impact against fix size;
+  `defer` rose to 0.19 on one contested finding, `fix_now` still led.
+- Fix-branch review on v3: 1/3 accepted, 2 fell back to Claude.
+- Human labels on disagreements: 2 of 3 sided with Jev.
+- Jev answers in 1-2 s; the Codex check takes 20-45 s. One check hung
+  for ~90 min (child processes kept the pipes open; fixed), and Codex
+  hit its usage limit during the run; the flow fell back as designed.
+
 ## Open questions
 
 - Whether the Codex check is worth its time (~30 s per call)

@@ -31,12 +31,12 @@ imported); an explicitly-set `KANBAN_DATABASE_URL` in the environment
 overrides that. To run the tests against Postgres, e.g. the Compose
 `db` service:
 
-    KANBAN_DATABASE_URL="postgresql+psycopg://kanban:kanban@localhost:5432/kanban" make test
+    KANBAN_DATABASE_URL="postgresql+psycopg://kanban:kanban@localhost:5432/kanban_test" make test
 
-or `make test-pg` from the repo root, which starts the `db` service
-first. Note that the suite drops and recreates every table between tests,
-so it **wipes whatever database it points at** — don't point it at one
-whose data you want to keep.
+or `make test-pg` from the repo root, which starts the `db` service and
+creates the `kanban_test` database if needed. The suite drops and
+recreates every table between tests, so it refuses to start unless the
+database is in-memory SQLite or its name contains `test`.
 
 ## Run
 
@@ -59,6 +59,9 @@ via `credentials: "include"`, so any `http://localhost:<port>` or
 `https://localhost:<port>` origin is allowed by default (with credentials).
 For a non-localhost frontend origin (e.g. a deployed Lovable preview URL),
 set `KANBAN_CORS_ORIGINS` to a comma-separated list of allowed origins.
+Setting it also switches the session cookie from `SameSite=Lax` to
+`SameSite=None` (with `Secure`), which cross-site frontends need and
+which lets cross-site form posts carry the session.
 
 ## Serving the frontend
 

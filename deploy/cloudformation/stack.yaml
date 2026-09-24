@@ -109,6 +109,9 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Sub kanban-app-${AWS::StackName}-ec2
+      # Required by the deploy role's IAM policy (bootstrap.yaml,
+      # Ec2RoleBoundary); caps this role's permissions.
+      PermissionsBoundary: !Sub arn:aws:iam::${AWS::AccountId}:policy/kanban-app-ec2-boundary
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:

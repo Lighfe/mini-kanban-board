@@ -21,6 +21,11 @@ router = APIRouter(prefix="/api/auth", tags=["Auth"])
 # once at import time; tests/conftest.py sets this env var to "false"
 # before the app is imported.
 SECURE_COOKIES = os.environ.get("KANBAN_SECURE_COOKIES", "true").lower() != "false"
+# Cross-site frontends (KANBAN_CORS_ORIGINS, e.g. a Lovable preview hitting
+# prod) only get the session cookie with SameSite=None; the default
+# same-origin deployment uses Lax, which keeps cross-site form posts
+# (CSRF) from carrying the session.
+CROSS_SITE_COOKIES = bool(os.environ.get("KANBAN_CORS_ORIGINS", "").strip())
 
 
 class SignupRequest(BaseModel):
@@ -36,13 +41,10 @@ class SigninRequest(BaseModel):
 
 def _set_session_cookie(response: Response, user_id: str) -> None:
     token = create_session(user_id)
-    # "Lax" is fine (and required) for local dev: localhost:<port> pairs are
-    # same-site, so it's still sent on the frontend's cross-origin fetches,
-    # and a real HTTPS deployment might put the frontend on a different
-    # registrable domain (e.g. a Lovable preview URL) — a genuinely
-    # cross-site fetch, which browsers never attach a "Lax" cookie to.
-    # "None" requires "Secure", which SECURE_COOKIES already tracks.
-    samesite = "none" if SECURE_COOKIES else "lax"
+    # "Lax" covers local dev (localhost:<port> pairs are same-site) and the
+    # same-origin production deployment. "None" is only for cross-site
+    # frontends (see CROSS_SITE_COOKIES) and requires "Secure".
+    samesite = "none" if SECURE_COOKIES and CROSS_SITE_COOKIES else "lax"
     response.set_cookie(SESSION_COOKIE, token, httponly=True, samesite=samesite, secure=SECURE_COOKIES)
 
 

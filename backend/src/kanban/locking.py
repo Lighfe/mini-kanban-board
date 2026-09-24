@@ -5,13 +5,31 @@ class rather than `@app.middleware("http")` (Starlette's BaseHTTPMiddleware).
 """
 
 import asyncio
+import json
+import logging
 
 from kanban.db import session as db_session
 
+logger = logging.getLogger(__name__)
+
+# Request bodies are buffered in memory before the lock (see below); the
+# API's largest bodies (task descriptions) are far below this.
+MAX_BODY_BYTES = 1024 * 1024
+
+
+def _json_response(status: int, message: str) -> list[dict]:
+    body = json.dumps({"message": message}).encode()
+    return [
+        {"type": "http.response.start", "status": status,
+         "headers": [(b"content-type", b"application/json"),
+                     (b"content-length", str(len(body)).encode())]},
+        {"type": "http.response.body", "body": body},
+    ]
+
 
 class SerializeRequestsMiddleware:
-    """Holds a single asyncio.Lock for the full duration of every HTTP
-    request, so no two requests' handler code — sync (dispatched to a
+    """Holds a single asyncio.Lock while each HTTP request's handler runs
+    and its transaction commits, so no two requests' handler code — sync (dispatched to a
     thread pool by Starlette) or async — ever executes concurrently
     against the shared, process-wide SQLAlchemy Session (kanban/db.py).
 
@@ -21,6 +39,14 @@ class SerializeRequestsMiddleware:
     one-session-per-request pattern, just without a per-request Session
     object (kanban/db.py explains why one process-wide Session is used
     instead).
+
+    Network I/O happens outside the lock: the request body is read in
+    full before acquiring it, so a client that never finishes sending
+    its body only stalls its own request (bodies over MAX_BODY_BYTES get a
+    413); the response is captured
+    while the lock is held and sent after the commit, so the client
+    never sees success for a write that failed to commit (a failed
+    commit is rolled back and answered with a 500 instead).
 
     The lock is (re)created lazily, bound to whichever event loop is
     currently running, rather than once at import time. A real deployment
@@ -55,11 +81,41 @@ class SerializeRequestsMiddleware:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
+        request_messages = []
+        body_bytes = 0
+        while True:
+            message = await receive()
+            request_messages.append(message)
+            body_bytes += len(message.get("body", b""))
+            if body_bytes > MAX_BODY_BYTES:
+                for response_message in _json_response(413, "Request body too large"):
+                    await send(response_message)
+                return
+            if message["type"] != "http.request" or not message.get("more_body", False):
+                break
+
+        async def replay_receive():
+            if request_messages:
+                return request_messages.pop(0)
+            return await receive()
+
+        response_messages = []
+
+        async def capture_send(message):
+            response_messages.append(message)
+
         async with self._get_lock():
             try:
-                await self.app(scope, receive, send)
+                await self.app(scope, replay_receive, capture_send)
             except Exception:
                 db_session.rollback()
                 raise
-            else:
+            try:
                 db_session.commit()
+            except Exception:
+                logger.exception("commit failed; rolled back and answered 500")
+                db_session.rollback()
+                response_messages = _json_response(500, "Could not save changes")
+
+        for message in response_messages:
+            await send(message)

@@ -72,6 +72,55 @@ Resources:
             }]
           }
 
+  # Upper bound on what any app EC2 role (kanban-app-*-ec2) can do. The
+  # deploy role may only create or change those roles with this boundary
+  # attached (see the Iam statements below), so attaching an admin policy
+  # or writing a broad inline policy to them grants nothing beyond this -
+  # otherwise the deploy role could escalate to account admin through the
+  # instance role and its SSM shell access.
+  Ec2RoleBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: kanban-app-ec2-boundary
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: EcrPull
+            Effect: Allow
+            Action:
+              - ecr:GetAuthorizationToken
+              - ecr:BatchGetImage
+              - ecr:GetDownloadUrlForLayer
+              - ecr:BatchCheckLayerAvailability
+            Resource: "*"
+          - Sid: DbSecret
+            Effect: Allow
+            Action: secretsmanager:GetSecretValue
+            Resource: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:kanban-app-*
+          # The actions of AmazonSSMManagedInstanceCore, which the EC2 role
+          # attaches for SSM sessions and the deploy's RunCommand push.
+          - Sid: SsmAgent
+            Effect: Allow
+            Action:
+              - ssm:DescribeAssociation
+              - ssm:GetDeployablePatchSnapshotForInstance
+              - ssm:GetDocument
+              - ssm:DescribeDocument
+              - ssm:GetManifest
+              - ssm:GetParameter
+              - ssm:GetParameters
+              - ssm:ListAssociations
+              - ssm:ListInstanceAssociations
+              - ssm:PutInventory
+              - ssm:PutComplianceItems
+              - ssm:PutConfigurePackageResult
+              - ssm:UpdateAssociationStatus
+              - ssm:UpdateInstanceAssociationStatus
+              - ssm:UpdateInstanceInformation
+              - ssmmessages:*
+              - ec2messages:*
+            Resource: "*"
+
   DeployRole:
     Type: AWS::IAM::Role
     Properties:
@@ -151,13 +200,27 @@ Resources:
                   - rds:ListTagsForResource
                 Resource: "*"
 
-              - Sid: Iam
+              # Granting permissions to an app EC2 role requires the
+              # Ec2RoleBoundary permissions boundary on it (see above).
+              # PutRolePermissionsBoundary/DeleteRolePermissionsBoundary
+              # are not granted, so the boundary can't be swapped out.
+              - Sid: IamGrantWithBoundary
                 Effect: Allow
                 Action:
                   - iam:CreateRole
+                  - iam:PutRolePolicy
+                  - iam:AttachRolePolicy
+                Resource:
+                  - !Sub arn:aws:iam::${AWS::AccountId}:role/kanban-app-*-ec2
+                Condition:
+                  StringEquals:
+                    iam:PermissionsBoundary: !Ref Ec2RoleBoundary
+
+              - Sid: Iam
+                Effect: Allow
+                Action:
                   - iam:DeleteRole
                   - iam:GetRole
-                  - iam:PutRolePolicy
                   - iam:DeleteRolePolicy
                   - iam:GetRolePolicy
                   - iam:TagRole
@@ -166,7 +229,6 @@ Resources:
                   - iam:GetInstanceProfile
                   - iam:AddRoleToInstanceProfile
                   - iam:RemoveRoleFromInstanceProfile
-                  - iam:AttachRolePolicy
                   - iam:DetachRolePolicy
                   - iam:PassRole
                 Resource:
