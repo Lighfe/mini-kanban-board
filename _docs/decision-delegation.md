@@ -216,8 +216,8 @@ Questions to answer after about 30 findings:
 
 ### Results so far
 
-2026-09-24, 11 findings from two Codex reviews (8 whole-repo, 3 on the
-resulting fix branch):
+2026-09-24, 14 findings from three Codex reviews (8 whole-repo, 3 on
+the resulting fix branch, 3 spec-conformance):
 
 - Template v1 accepted 0/8: without a review scope, `fix_now` vs
   `defer` had nothing to judge against (Codex reported this as a
@@ -229,6 +229,9 @@ resulting fix branch):
   review findings rarely meet. v3 weighs impact against fix size;
   `defer` rose to 0.19 on one contested finding, `fix_now` still led.
 - Fix-branch review on v3: 1/3 accepted, 2 fell back to Claude.
+- Spec-conformance review on v3 (3 findings, all tier A): 2/3 accepted,
+  both agreeing with the prior; 1 fell back to Claude. No human
+  escalation.
 - Human labels on disagreements: 2 of 3 sided with Jev.
 - Jev answers in 1-2 s; the Codex check takes 20-45 s. One check hung
   for ~90 min (child processes kept the pipes open; fixed), and Codex
