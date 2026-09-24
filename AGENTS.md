@@ -23,9 +23,10 @@ project — don't edit it locally; changes go through Lovable.
 - **Codex** (plugin) — code review, run at the end of every stage.
   Uses the Codex default model (`gpt-6-astra`); don't pass an older
   model.
-- **Jev** (TypeSafe) — narrow decisions with confidence; design in
-  [_docs/decision-delegation.md](_docs/decision-delegation.md), not yet
-  built.
+- **Jev** (TypeSafe) — triages review findings via
+  [tools/jev/](tools/jev/); design in
+  [_docs/decision-delegation.md](_docs/decision-delegation.md), usage in
+  [.claude/skills/delegate-decision/](.claude/skills/delegate-decision/SKILL.md).
 
 ## Secrets
 

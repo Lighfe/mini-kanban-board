@@ -1,6 +1,6 @@
 # Decision delegation (Jev)
 
-Status: design. Nothing below is built yet except the secrets setup.
+Status: `finding_triage` built in [tools/jev/](../tools/jev/); pilot not run.
 
 Agents hand narrow decisions to Jev, TypeSafe's System One model, which
 returns a typed answer with a probability distribution. Answers that
@@ -24,6 +24,8 @@ Observations so far, not yet measured for this workflow:
   ([models](https://docs.typesafe.ai/models.md)).
 - TypeSafe's parallel-questions cookbook reports 0.27 s for one request
   with 13 questions over a ~54k-character document.
+- `finding_triage` requests (2026-09-24): 0.7-1.5 s, ~360 input tokens
+  without code excerpt. A run including the Codex check took 28-33 s.
 - A trivial Codex call ("Reply with exactly: ok", `gpt-6-astra`,
   `codex exec`, 2026-09-24) took 13 s wall clock and reported 3,203
   tokens used.
@@ -55,12 +57,10 @@ Each decision type has a versioned template in `tools/jev/templates/`:
 - the state fields and the script that extracts them from the repo
   (for example finding text, the referenced diff hunk, the matching
   `specs.md` section);
-- the risk rule that sets the tier (see Thresholds);
-- optional equivalence groups: options treated as the same outcome when
-  probability splits between them.
+- the risk rule that sets the tier (see Thresholds).
 
-Templates are reviewed by Codex and the human before use. A wording
-change is a new template version. Per decision, Claude supplies only the
+At most 5 templates. Each is reviewed by Codex and the human before
+use. A wording change is a new template version. Per decision, Claude supplies only the
 item reference and its prior; it does not write criteria.
 
 ## Request shape
@@ -80,9 +80,8 @@ Each decision sends two questions in one request:
 - The script shuffles option order before sending.
 - The Codex framing check does not see the prior. One of its checks is
   whether the wording favors an option.
-- The pilot tests sensitivity to option order and to one paraphrase of
-  each template, and the human audits a random sample of accepted
-  answers.
+- The pilot compares Jev's answers with Claude's priors and the human's
+  labels.
 
 ## Flow
 
@@ -94,19 +93,32 @@ goes to the fallback for its tier.
 Gates, checked in order on each Jev answer:
 
 1. Invalid response or API error: retry once (counts against budget).
-2. `context_sufficient` < 0.7: the template's script adds the next
-   evidence level (for example the whole file instead of the hunk);
-   re-ask. If no further level exists: fallback.
-3. `decision` == `none_fit` with probability >= 0.3: fallback. Options
-   are fixed per template version; a recurring `none_fit` is fixed by a
-   new template version.
-4. Confidence below the tier threshold, after merging equivalence
-   groups: Codex framing check (may add evidence from the repo or
-   report a template defect; may not change options), re-ask.
+2. `context_sufficient` < 0.4: Codex check, re-ask.
+3. `none_fit` probability >= 0.3: fallback. Options are fixed per
+   template version; a recurring `none_fit` is fixed by a new template
+   version.
+4. Confidence below the tier threshold: Codex check, re-ask.
 5. Otherwise: accept.
 
-Fallback: tier A, Claude decides; tier B, the human decides. Each
-fallback is logged with the gate that caused it.
+The Codex check gets the question, options and state (not the prior),
+and returns up to 5 facts from the repo with sources, which are added
+to the state. It may also report a template defect (logged); it does
+not change options. If it returns no facts: fallback.
+
+Questions in one request don't see each other, so the context question
+restates the decision question and options. The 0.4 threshold is
+provisional: on five probe findings, `context_sufficient` was 0.47-0.56,
+except 0.26 for the one with no code attached. Decision confidence on
+the same probes was 0.13-0.84; only one would pass tier A.
+
+Fallback: tier A, Claude decides. Tier B, the human decides only if
+Jev's last top answer disagrees with Claude's prior; otherwise, and on
+API errors, Claude decides. Each fallback is logged with the gate that
+caused it.
+
+Delegation must not add human feedback compared with Claude deciding
+alone. Once 10 or more findings are logged, if more than 1 in 10
+reached the human, use of the tool stops until the rules are revised.
 
 ### Thresholds
 
@@ -119,8 +131,7 @@ risk of every option, including inaction (`defer`, `reject`).
 | A | Low-severity finding: wrong choice costs a small follow-up edit | confidence >= 0.6 |
 | B | High-severity finding: deferring or rejecting could ship a bug | confidence >= 0.85 |
 
-Starting values. Thresholds are tuned on a tuning split and evaluated on
-held-out cases (see Pilot). Confidence describes the shape of the
+Starting values, tuned from the pilot. Confidence describes the shape of the
 distribution, not accuracy; the pilot checks it against observed errors.
 
 ### Disagreement with the prior
@@ -184,36 +195,30 @@ spend limits, and short-lived credentials. AWS uses SSO profiles
 Decision type: triage of Codex review findings into `fix_now`, `defer`,
 `reject`.
 
-Cases: findings from past stage reviews (git history and
-[archive/](archive/)). For each, a snapshot of the repo at the commit
-the review ran against. Cases are split into a tuning set and a held-out
-set before any runs.
+Cases: findings from the next Codex reviews, as they happen. Past
+findings exist only as commit messages (about six) and are not used.
 
-Arms, each in a fresh headless session (`claude -p --output-format
-json`) given only the snapshot and the finding, with no later history:
+Per finding, both arms run on the same state: Claude's prior is the
+inline answer; the tool's result is the delegated answer. The human
+labels only findings where the two disagree or the tool falls back to
+the human.
 
-- inline: Claude decides alone;
-- delegated: Claude uses the Jev flow.
+Measured per finding, from the decision log: Jev and Codex time, Jev
+input tokens, path taken, agreement with the prior, and the human label
+where given. Claude's per-delegation overhead (tokens and time for the
+tool call) is measured once on a few findings with `claude -p
+--output-format json`, with and without the tool.
 
-Labels: the human labels each held-out case under a written rubric,
-without seeing either arm's answer. The recorded historical outcome is
-kept as a secondary reference.
-
-Measured per case: total tokens (Claude session usage plus Codex tokens
-where called); end-to-end wall-clock time minus time waiting on the
-human, with Jev and Codex call durations reported separately, not added;
-agreement with the human label; final path; escalation to the human.
-
-The delegated flow continues into the regular workflow if, on the
-held-out set, it is not worse on tokens or time and better on at least
-one, not lower on agreement with the human labels, and does not escalate
-more cases to the human. Missing measurements make the result
-inconclusive.
+Decision after about 30 findings: keep the flow if it is not worse on
+agent tokens or time and better on at least one, the human sides with
+Jev at least as often as with the prior on disagreements, and it does
+not escalate more findings to the human than Claude alone would.
 
 ## Open questions
 
-- Whether the Codex framing check is worth its time (13 s+ per call)
+- Whether the Codex check is worth its time (~30 s per call)
   at tier A, or only at tier B.
-- Number of held-out cases available from history, and whether it is
-  enough before prospective runs.
+- Claude writes a prior for every finding, so the tool adds Claude
+  tokens unless it replaces longer deliberation. The overhead
+  measurement decides whether priors stay mandatory after the pilot.
 - Which decision type to add after the pilot.
