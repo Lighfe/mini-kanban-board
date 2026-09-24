@@ -199,15 +199,16 @@ Labels: the human labels each held-out case under a written rubric,
 without seeing either arm's answer. The recorded historical outcome is
 kept as a secondary reference.
 
-Measured per case: total tokens and wall-clock time from the headless
-session's reported usage (both arms), plus Codex tokens and time where
-called; agreement with the human label; final path; escalation to the
-human.
+Measured per case: total tokens (Claude session usage plus Codex tokens
+where called); end-to-end wall-clock time minus time waiting on the
+human, with Jev and Codex call durations reported separately, not added;
+agreement with the human label; final path; escalation to the human.
 
 The delegated flow continues into the regular workflow if, on the
-held-out set, it is lower on tokens or time, not lower on agreement with
-the human labels, and does not escalate more cases to the human. Missing
-measurements make the result inconclusive.
+held-out set, it is not worse on tokens or time and better on at least
+one, not lower on agreement with the human labels, and does not escalate
+more cases to the human. Missing measurements make the result
+inconclusive.
 
 ## Open questions
 
