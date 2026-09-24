@@ -21,6 +21,20 @@ project — don't edit it locally; changes go through Lovable.
 - **Lovable** (MCP plugin) — builds and iterates the frontend, including
   its build configuration.
 - **Codex** (plugin) — code review, run at the end of every stage.
+  Uses the Codex default model (`gpt-6-astra`); don't pass an older
+  model.
+- **Jev** (TypeSafe) — narrow decisions with confidence; design in
+  [_docs/decision-delegation.md](_docs/decision-delegation.md), not yet
+  built.
+
+## Secrets
+
+Local secrets live outside the repo in
+`~/.config/mini-kanban-board/secrets.env` (file mode 600); variables are
+listed in [secrets.env.example](secrets.env.example). Don't read, print,
+or copy that file. Run commands that need secrets through
+`scripts/with-secrets <command>`. Never commit secrets or add them to
+`.env` files in the repo.
 
 ## Backend conventions
 
