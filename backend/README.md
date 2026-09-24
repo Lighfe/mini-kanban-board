@@ -59,6 +59,9 @@ via `credentials: "include"`, so any `http://localhost:<port>` or
 `https://localhost:<port>` origin is allowed by default (with credentials).
 For a non-localhost frontend origin (e.g. a deployed Lovable preview URL),
 set `KANBAN_CORS_ORIGINS` to a comma-separated list of allowed origins.
+Setting it also switches the session cookie from `SameSite=Lax` to
+`SameSite=None` (with `Secure`), which cross-site frontends need and
+which lets cross-site form posts carry the session.
 
 ## Serving the frontend
 

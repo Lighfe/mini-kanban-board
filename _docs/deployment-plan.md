@@ -195,7 +195,7 @@ Production configuration:
 | `KANBAN_DATABASE_URL` | Postgres URL (secret, from CloudFormation output / SSM) |
 | `KANBAN_STATIC_DIR` | path to the built frontend inside the image |
 | `KANBAN_SECURE_COOKIES` | unset (defaults to `true`) |
-| `KANBAN_CORS_ORIGINS` | unset unless a Lovable preview should hit prod |
+| `KANBAN_CORS_ORIGINS` | unset unless a Lovable preview should hit prod (setting it makes the session cookie `SameSite=None`) |
 
 Implemented in [deploy/](../deploy/): `deploy/cloudformation/bootstrap.yaml`
 (one-time — the GitHub OIDC provider, the scoped `kanban-app-deploy` IAM

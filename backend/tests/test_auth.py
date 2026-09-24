@@ -92,3 +92,28 @@ def test_session_cookie_is_secure_by_default_when_the_env_var_is_unset_or_true()
         auth_router.SECURE_COOKIES = old_value
     set_cookie_header = response.headers.get("set-cookie", "")
     assert "secure" in set_cookie_header.lower()
+
+
+def _cookie_header(monkeypatch, secure: bool, cross_site: bool) -> str:
+    monkeypatch.setattr(auth_router, "SECURE_COOKIES", secure)
+    monkeypatch.setattr(auth_router, "CROSS_SITE_COOKIES", cross_site)
+    response = Response()
+    auth_router._set_session_cookie(response, "some-user-id")
+    return response.headers.get("set-cookie", "").lower()
+
+
+def test_production_cookie_is_samesite_lax_by_default(monkeypatch):
+    # Production serves frontend and API from one origin, so Lax suffices
+    # and blocks cross-site form posts (CSRF) from carrying the session.
+    assert "samesite=lax" in _cookie_header(monkeypatch, secure=True, cross_site=False)
+
+
+def test_cookie_is_samesite_none_only_with_cross_site_origins_configured(monkeypatch):
+    # KANBAN_CORS_ORIGINS (e.g. a Lovable preview hitting prod) needs the
+    # cookie on cross-site fetches, which requires SameSite=None + Secure.
+    header = _cookie_header(monkeypatch, secure=True, cross_site=True)
+    assert "samesite=none" in header and "secure" in header
+
+
+def test_insecure_cookie_is_never_samesite_none(monkeypatch):
+    assert "samesite=lax" in _cookie_header(monkeypatch, secure=False, cross_site=True)
