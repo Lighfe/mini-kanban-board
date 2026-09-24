@@ -19,8 +19,11 @@ def is_disposable_database(url: str) -> bool:
     or a database whose name says it's for tests."""
     from sqlalchemy.engine import make_url
 
-    database = make_url(url).database or ""
-    return database in ("", ":memory:") or "test" in database.lower()
+    parsed = make_url(url)
+    database = parsed.database or ""
+    if parsed.get_backend_name() == "sqlite" and database in ("", ":memory:"):
+        return True
+    return "test" in database.lower()
 
 
 if not is_disposable_database(os.environ["KANBAN_DATABASE_URL"]):

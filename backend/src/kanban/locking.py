@@ -12,13 +12,19 @@ from kanban.db import session as db_session
 
 logger = logging.getLogger(__name__)
 
-_COMMIT_FAILED_BODY = json.dumps({"message": "Could not save changes"}).encode()
-_COMMIT_FAILED_RESPONSE = [
-    {"type": "http.response.start", "status": 500,
-     "headers": [(b"content-type", b"application/json"),
-                 (b"content-length", str(len(_COMMIT_FAILED_BODY)).encode())]},
-    {"type": "http.response.body", "body": _COMMIT_FAILED_BODY},
-]
+# Request bodies are buffered in memory before the lock (see below); the
+# API's largest bodies (task descriptions) are far below this.
+MAX_BODY_BYTES = 1024 * 1024
+
+
+def _json_response(status: int, message: str) -> list[dict]:
+    body = json.dumps({"message": message}).encode()
+    return [
+        {"type": "http.response.start", "status": status,
+         "headers": [(b"content-type", b"application/json"),
+                     (b"content-length", str(len(body)).encode())]},
+        {"type": "http.response.body", "body": body},
+    ]
 
 
 class SerializeRequestsMiddleware:
@@ -36,7 +42,8 @@ class SerializeRequestsMiddleware:
 
     Network I/O happens outside the lock: the request body is read in
     full before acquiring it, so a client that never finishes sending
-    its body only stalls its own request; the response is captured
+    its body only stalls its own request (bodies over MAX_BODY_BYTES get a
+    413); the response is captured
     while the lock is held and sent after the commit, so the client
     never sees success for a write that failed to commit (a failed
     commit is rolled back and answered with a 500 instead).
@@ -75,9 +82,15 @@ class SerializeRequestsMiddleware:
             await self.app(scope, receive, send)
             return
         request_messages = []
+        body_bytes = 0
         while True:
             message = await receive()
             request_messages.append(message)
+            body_bytes += len(message.get("body", b""))
+            if body_bytes > MAX_BODY_BYTES:
+                for response_message in _json_response(413, "Request body too large"):
+                    await send(response_message)
+                return
             if message["type"] != "http.request" or not message.get("more_body", False):
                 break
 
@@ -102,7 +115,7 @@ class SerializeRequestsMiddleware:
             except Exception:
                 logger.exception("commit failed; rolled back and answered 500")
                 db_session.rollback()
-                response_messages = _COMMIT_FAILED_RESPONSE
+                response_messages = _json_response(500, "Could not save changes")
 
         for message in response_messages:
             await send(message)
