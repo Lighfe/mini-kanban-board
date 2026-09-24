@@ -2,7 +2,12 @@
   "permissions": {
     "deny": [
       "Edit(frontend/**)",
-      "Write(frontend/**)"
+      "Write(frontend/**)",
+      "Read(~/.config/mini-kanban-board/**)",
+      "Edit(~/.config/mini-kanban-board/**)",
+      "Write(~/.config/mini-kanban-board/**)",
+      "Bash(cat ~/.config/mini-kanban-board/*)",
+      "Bash(source ~/.config/mini-kanban-board/*)"
     ]
   }
 }
