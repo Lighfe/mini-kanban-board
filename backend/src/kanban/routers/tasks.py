@@ -173,6 +173,9 @@ def _restore_target_column_id(board_id: str, task: dict) -> str | None:
 def unarchive_task(boardId: str, taskId: str, current_user: dict = Depends(get_current_user)) -> dict:
     require_role_or_403(boardId, current_user["id"], "editor")
     task = _get_task_or_404(boardId, taskId)
+    # Already active (e.g. a repeated Undo): leave its position alone.
+    if not task["archived"]:
+        return task
     target_column_id = _restore_target_column_id(boardId, task)
     if target_column_id is None:
         raise ApiError(409, "No column available to restore this task into")
