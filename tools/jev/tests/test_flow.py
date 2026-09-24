@@ -106,3 +106,15 @@ def test_option_order_is_shuffled():
         run(FINDING_TRIAGE, LOW_ITEM, {}, ask, check=None, rng=random.Random(seed))
         orders.add(tuple(calls[0]["criteria"]))
     assert len(orders) > 1
+
+
+def test_repository_scope_has_no_current_change(tmp_path):
+    state = FINDING_TRIAGE.build_state({"review_scope": "repository", "title": "t"}, tmp_path)
+    assert "current_change" not in state
+    assert "project_context" in state and "whole repository" in state["review_scope"]
+
+
+def test_unknown_scope_is_rejected(tmp_path):
+    import pytest
+    with pytest.raises(ValueError):
+        FINDING_TRIAGE.build_state({"review_scope": "branch"}, tmp_path)
