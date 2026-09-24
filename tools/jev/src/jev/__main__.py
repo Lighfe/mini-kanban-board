@@ -12,6 +12,7 @@ JSON and appends one line to the decision log.
 
 import json
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -40,6 +41,24 @@ CODEX_SCHEMA = {
     "required": ["facts", "template_defect"],
     "additionalProperties": False,
 }
+
+
+CODEX_TIMEOUT_SECONDS = 300
+
+
+def run_with_timeout(cmd: list[str], input: str, timeout: float) -> subprocess.CompletedProcess:
+    """Like subprocess.run(..., timeout=...), but kills the whole process
+    group on timeout: codex starts child processes that inherit its pipes,
+    and killing only codex leaves communicate() waiting on them."""
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, text=True, start_new_session=True)
+    try:
+        stdout, stderr = proc.communicate(input=input, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        os.killpg(proc.pid, signal.SIGKILL)
+        proc.communicate()
+        raise
+    return subprocess.CompletedProcess(cmd, proc.returncode, stdout, stderr)
 
 
 def repo_root() -> Path:
@@ -79,10 +98,10 @@ def codex_check(repo: Path):
             schema, out = Path(tmp, "schema.json"), Path(tmp, "out.json")
             schema.write_text(json.dumps(CODEX_SCHEMA))
             try:
-                proc = subprocess.run(
+                proc = run_with_timeout(
                     ["codex", "exec", "--sandbox", "read-only", "--ephemeral", "-C", str(repo),
                      "--output-schema", str(schema), "-o", str(out), "-"],
-                    input=prompt, capture_output=True, text=True, timeout=600,
+                    input=prompt, timeout=CODEX_TIMEOUT_SECONDS,
                 )
             except (OSError, subprocess.TimeoutExpired) as exc:
                 print(f"jev: codex check failed: {exc!r}", file=sys.stderr)
