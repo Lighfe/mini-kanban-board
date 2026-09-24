@@ -38,6 +38,12 @@ with secrets. Pass only the variables a command needs:
 `scripts/with-secrets VAR[,VAR...] -- <command>`. Never commit secrets
 or add them to `.env` files in the repo.
 
+AWS runs as the user's admin SSO profile
+(`scripts/with-secrets AWS_PROFILE -- aws ...`). Agents may run
+read-only commands (`describe-*`, `list-*`, `get-*`) freely. Any command
+that creates, changes, or deletes AWS resources needs the user's
+approval for that exact command, each time.
+
 ## Backend conventions
 
 - Use `uv` for dependency management in `backend/`: `uv sync`,
