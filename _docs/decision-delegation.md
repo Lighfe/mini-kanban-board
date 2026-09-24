@@ -205,10 +205,14 @@ where given. Claude's per-delegation overhead (tokens and time for the
 tool call) is measured once on a few findings with `claude -p
 --output-format json`, with and without the tool.
 
-Decision after about 30 findings: keep the flow if it is not worse on
-agent tokens or time and better on at least one, the human sides with
-Jev at least as often as with the prior on disagreements, and it does
-not escalate more findings to the human than Claude alone would.
+Questions to answer after about 30 findings:
+
+- Does the flow change agent tokens or time per finding, and by how
+  much?
+- On disagreements, does the human side with Jev or with the prior?
+- How many findings reach the human, compared with Claude deciding
+  alone?
+- Where does the flow help, and where is it overhead?
 
 ## Open questions
 
