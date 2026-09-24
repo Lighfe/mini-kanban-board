@@ -7,8 +7,8 @@ description: Use when triaging code review findings (fix now / defer / reject), 
 
 Design: [_docs/decision-delegation.md](../../../_docs/decision-delegation.md).
 
-Templates available: `finding_triage` (one review finding → `fix_now`,
-`defer`, `reject`).
+Templates available: `finding_triage` v2 (one review finding →
+`fix_now`, `defer`, `accept`, `reject`).
 
 ## Steps
 
@@ -23,14 +23,20 @@ Templates available: `finding_triage` (one review finding → `fix_now`,
 
    ```json
    {"template": "finding_triage",
-    "item": {"title": "...", "body": "<finding text as the reviewer wrote it>",
+    "item": {"review_scope": "change|repository",
+             "title": "...", "body": "<finding text as the reviewer wrote it>",
              "severity": "low|medium|high|critical", "file": "path", "line": 42},
     "prior": {"answer": "defer", "reason": "..."}}
    ```
 
-   Copy the finding text as written; don't summarize or add your view.
+   `review_scope` is `change` when the review covered the current
+   branch, `repository` when it covered the whole repo. Copy the finding
+   text as written; don't summarize or add your view.
 3. Act on the output:
-   - `outcome: accept`: apply `answer`.
+   - `outcome: accept`: apply `answer`:
+     - `fix_now`: fix it before the review is closed.
+     - `defer`: `gh issue create` with the finding and the reason.
+     - `accept`, `reject`: no action (the log has the decision).
    - `outcome: fallback`, `decider: claude`: decide yourself; the
      output's attempts show Jev's distribution.
    - `outcome: fallback`, `decider: human` (high-severity finding where
