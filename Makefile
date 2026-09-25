@@ -1,5 +1,5 @@
 # Repo-level shortcuts. Backend-only targets live in backend/Makefile.
-.PHONY: build up down test test-pg
+.PHONY: build up down test test-pg aws-login
 
 IMAGE ?= mini-kanban
 # The `db` service in docker-compose.yml, reached via its published port.
@@ -25,3 +25,8 @@ test-pg:
 	docker compose exec -T db psql -U kanban -d kanban -tAc "SELECT 1 FROM pg_database WHERE datname = 'kanban_test'" | grep -q 1 \
 		|| docker compose exec -T db createdb -U kanban kanban_test
 	KANBAN_DATABASE_URL=$(PG_URL) $(MAKE) -C backend test
+
+# Log in to AWS SSO with the profile from the local secrets file
+# (AWS_PROFILE, see secrets.env.example). Opens a browser.
+aws-login:
+	scripts/with-secrets AWS_PROFILE -- aws sso login
