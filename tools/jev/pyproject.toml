@@ -1,7 +1,7 @@
 [project]
 name = "jev"
 version = "0.1.0"
-description = "Delegate narrow decisions to Jev; see _docs/decision-delegation.md"
+description = "Ask TypeSafe's Jev model typed questions from the command line"
 authors = [
     { name = "lighfe", email = "juliandralle@gmx.net" }
 ]
