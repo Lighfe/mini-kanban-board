@@ -269,7 +269,7 @@ This took far more live iteration than it should have — see
 [deploy-postmortem.md](deploy-postmortem.md) for what went wrong and
 what to do differently next time this shape of work comes up.
 
-### 7. Dev and prod environments — in progress
+### 7. Dev and prod environments — done
 
 Two independent copies of the step-6 infrastructure in the same account:
 `dev` (`dev.katban-10x-cat-productivity.lighfe.dev`) and `prod`
@@ -294,6 +294,23 @@ deployed by hand. Design:
   after 60 days without repo activity. The threshold is an open
   question to revisit.
 - Check the roles with `deploy/verify-iam.sh` (IAM policy simulator).
+
+Verified 2026-09-28, from cold, with `deploy/verify-iam.sh` passing
+(both isolation directions, size caps): a dev deploy went through on the
+first try (no `AccessDenied`); a warm dev redeploy moved the running
+container to the new tag (checked with `docker ps` over SSM), so the
+stop/modify/start path and the resize-deny condition both work; prod
+came up alongside dev; destroying dev removed its stack and DNS record
+while prod kept serving; `auto-destroy.yml` left a young prod alone at
+the 72-hour default, destroyed it with `max_age_hours=0`, was a no-op
+with nothing up, and rejected `max_age_hours=abc` before assuming any
+role. A dispatch from a feature branch was rejected by the environment
+branch rule. Two fixes came from the Codex review before cutover, not
+from live failures: the resize deny needed a `Null` check (a bare
+`StringNotEquals` matches a missing key and would have blocked every
+redeploy), and the destroy action's DNS step needed its `jq` call
+guarded. The old shared `kanban-app-deploy` role, its boundary and the
+repo-level `AWS_DEPLOY_ROLE_ARN` secret were then removed.
 
 Next: dev auto-deploy on push and a manual promote-to-prod workflow
 (same image, no rebuild).
