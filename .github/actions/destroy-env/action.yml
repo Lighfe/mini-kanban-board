@@ -29,6 +29,12 @@ runs:
         ZONE_ID: ${{ inputs.hosted-zone-id }}
       run: |
         set -uo pipefail
+        # An empty hostname would "find" no record and pass, leaving the
+        # real record pointing at a released IP (subdomain takeover risk).
+        if [ -z "$RECORD_NAME" ]; then
+          echo "::error::hostname is empty (is SUBDOMAIN set on this GitHub Environment?)"
+          exit 1
+        fi
         if ! record=$(aws route53 list-resource-record-sets --hosted-zone-id "$ZONE_ID" \
             --start-record-name "$RECORD_NAME" --start-record-type A --max-items 1 \
             --query "ResourceRecordSets[?Name == '${RECORD_NAME}.' && Type == 'A'] | [0]" \
