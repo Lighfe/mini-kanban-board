@@ -1,11 +1,12 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >
-  Ephemeral per-run app stack for mini-kanban-board: EC2 (app + Caddy
-  containers), RDS Postgres, and the security groups/secrets/parameter
-  tying them together. Created and destroyed on every `deploy`/`destroy`
-  run — see _docs/deployment-plan.md step 6. Deployed by the scoped role
-  from deploy/cloudformation/bootstrap.yaml, never by hand with
-  AdminAccess.
+  Ephemeral app stack for mini-kanban-board, one per environment
+  (kanban-app-dev, kanban-app-prod): EC2 (app + Caddy containers), RDS
+  Postgres, and the security groups/secret tying them together. Created
+  and destroyed by the deploy/destroy workflow - see
+  _docs/deployment-plan.md steps 6 and 7. Deployed by the environment's
+  scoped role from deploy/cloudformation/deploy-role.yaml, never by hand
+  with AdminAccess. All names derive from the stack name.
 
 Parameters:
   VpcId:
@@ -22,11 +23,10 @@ Parameters:
     Description: URI of the persistent ECR repo (bootstrap stack output), without a tag.
   ImageTag:
     Type: String
-    Description: Image tag to run (the deploying commit's git SHA).
+    Description: Image tag to run (YYYYMMDD-HHMMSS-shortsha, from the deploy workflow's build job).
   SubdomainName:
     Type: String
-    Default: katban-10x-cat-productivity.lighfe.dev
-    Description: Public hostname Caddy requests a TLS cert for.
+    Description: The environment's public hostname; Caddy requests a TLS cert for it.
   AdminEmail:
     Type: String
     Default: juliandralle@gmail.com
@@ -71,7 +71,7 @@ Resources:
   DbSecret:
     Type: AWS::SecretsManager::Secret
     Properties:
-      Name: !Sub kanban-app-${AWS::StackName}-db
+      Name: !Sub ${AWS::StackName}-db
       Description: Master password for the kanban-app RDS instance.
       GenerateSecretString:
         SecretStringTemplate: '{"username":"kanban"}'
@@ -108,10 +108,11 @@ Resources:
   Ec2InstanceRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub kanban-app-${AWS::StackName}-ec2
-      # Required by the deploy role's IAM policy (bootstrap.yaml,
-      # Ec2RoleBoundary); caps this role's permissions.
-      PermissionsBoundary: !Sub arn:aws:iam::${AWS::AccountId}:policy/kanban-app-ec2-boundary
+      RoleName: !Sub ${AWS::StackName}-ec2
+      # Required by the deploy role's IAM policy (deploy-role.yaml,
+      # Ec2RoleBoundary); caps this role's permissions to this
+      # environment's secret.
+      PermissionsBoundary: !Sub arn:aws:iam::${AWS::AccountId}:policy/${AWS::StackName}-ec2-boundary
       AssumeRolePolicyDocument:
         Version: "2012-10-17"
         Statement:
@@ -168,7 +169,7 @@ Resources:
       SubnetId: !Select [0, !Ref SubnetIds]
       Tags:
         - Key: Name
-          Value: !Sub kanban-app-${AWS::StackName}
+          Value: !Sub ${AWS::StackName}
       UserData:
         Fn::Base64:
           Fn::Sub: |

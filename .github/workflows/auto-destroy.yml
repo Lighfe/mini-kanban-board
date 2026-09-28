@@ -1,0 +1,87 @@
+name: Auto-destroy
+
+# Safety net against forgotten environments: destroys an environment
+# whose app stack has existed longer than max_age_hours (72 on the daily
+# schedule). Best effort - GitHub can delay or skip scheduled runs, and
+# pauses them in a public repo after 60 days without activity. See
+# _docs/deployment-plan.md step 7.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      max_age_hours:
+        description: "Destroy environments older than this many hours (0 = destroy now)"
+        required: true
+        default: "72"
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  auto-destroy:
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [dev, prod]
+    runs-on: ubuntu-latest
+    environment: ${{ matrix.environment }}
+    # Same group as deploy.yml, held from the age check through the
+    # deletion: never races a running deploy/destroy.
+    concurrency:
+      group: deploy-kanban-app-${{ matrix.environment }}
+      cancel-in-progress: false
+    env:
+      AWS_REGION: eu-central-1
+      STACK_NAME: kanban-app-${{ matrix.environment }}
+      # Scheduled runs have no inputs. Not `inputs.max_age_hours || '72'`:
+      # that pattern is easy to get wrong for a manual 0.
+      MAX_AGE_HOURS: ${{ github.event_name == 'schedule' && '72' || inputs.max_age_hours }}
+    steps:
+      - name: Validate max age
+        run: |
+          if ! [[ "$MAX_AGE_HOURS" =~ ^[0-9]+$ ]]; then
+            echo "::error::max_age_hours must be a non-negative whole number, got '$MAX_AGE_HOURS'"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Creation time counts from the first deploy; redeploys don't
+      # reset it.
+      - name: Check stack age
+        id: age
+        run: |
+          set -euo pipefail
+          if ! created=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" \
+              --query "Stacks[0].CreationTime" --output text 2> "$RUNNER_TEMP/describe.err"); then
+            if grep -q "does not exist" "$RUNNER_TEMP/describe.err"; then
+              echo "No stack $STACK_NAME, nothing to do"
+              echo "expired=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            cat "$RUNNER_TEMP/describe.err" >&2
+            exit 1
+          fi
+          age_hours=$(( ( $(date -u +%s) - $(date -u -d "$created" +%s) ) / 3600 ))
+          echo "$STACK_NAME created $created, ${age_hours}h ago (limit ${MAX_AGE_HOURS}h)"
+          if [ "$age_hours" -ge "$MAX_AGE_HOURS" ]; then
+            echo "expired=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "expired=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Destroy
+        if: steps.age.outputs.expired == 'true'
+        uses: ./.github/actions/destroy-env
+        with:
+          stack-name: ${{ env.STACK_NAME }}
+          hostname: ${{ vars.SUBDOMAIN }}
+          hosted-zone-id: ${{ vars.AWS_HOSTED_ZONE_ID }}

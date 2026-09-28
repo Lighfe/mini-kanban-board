@@ -1,0 +1,78 @@
+name: Destroy environment
+description: >
+  Deletes an environment's DNS A record and its app CloudFormation stack.
+  Callers check out the repo and configure AWS credentials first. A
+  missing record or stack counts as already destroyed; any other error
+  fails the action.
+inputs:
+  stack-name:
+    description: App stack name, e.g. kanban-app-dev.
+    required: true
+  hostname:
+    description: The environment's hostname (no trailing dot).
+    required: true
+  hosted-zone-id:
+    description: Route 53 hosted zone ID.
+    required: true
+runs:
+  using: composite
+  steps:
+    # Reads the live record and deletes exactly that, instead of
+    # rebuilding it from the stack's IP output (which misses a drifted
+    # record and is gone once the stack is). A failure here doesn't stop
+    # the stack deletion; the last step reports it.
+    - name: Delete DNS A record
+      id: dns
+      shell: bash
+      env:
+        RECORD_NAME: ${{ inputs.hostname }}
+        ZONE_ID: ${{ inputs.hosted-zone-id }}
+      run: |
+        set -uo pipefail
+        if ! record=$(aws route53 list-resource-record-sets --hosted-zone-id "$ZONE_ID" \
+            --start-record-name "$RECORD_NAME" --start-record-type A --max-items 1 \
+            --query "ResourceRecordSets[?Name == '${RECORD_NAME}.' && Type == 'A'] | [0]" \
+            --output json); then
+          echo "failed=true" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        if [ "$record" = "null" ]; then
+          echo "No A record for $RECORD_NAME"
+          exit 0
+        fi
+        if ! jq -n --argjson rr "$record" '{Changes: [{Action: "DELETE", ResourceRecordSet: $rr}]}' \
+            > "$RUNNER_TEMP/delete-record.json"; then
+          echo "failed=true" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        if ! aws route53 change-resource-record-sets --hosted-zone-id "$ZONE_ID" \
+            --change-batch "file://$RUNNER_TEMP/delete-record.json"; then
+          echo "failed=true" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Delete stack
+      shell: bash
+      env:
+        STACK_NAME: ${{ inputs.stack-name }}
+      run: |
+        set -euo pipefail
+        if ! aws cloudformation describe-stacks --stack-name "$STACK_NAME" \
+            > /dev/null 2> "$RUNNER_TEMP/describe.err"; then
+          if grep -q "does not exist" "$RUNNER_TEMP/describe.err"; then
+            echo "No stack $STACK_NAME"
+            exit 0
+          fi
+          cat "$RUNNER_TEMP/describe.err" >&2
+          exit 1
+        fi
+        aws cloudformation delete-stack --stack-name "$STACK_NAME"
+        aws cloudformation wait stack-delete-complete --stack-name "$STACK_NAME"
+
+    - name: Report DNS cleanup failure
+      if: steps.dns.outputs.failed == 'true'
+      shell: bash
+      env:
+        RECORD_NAME: ${{ inputs.hostname }}
+      run: |
+        echo "::error::Deleting the DNS A record for $RECORD_NAME failed (see the first step)"
+        exit 1

@@ -1,0 +1,377 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Per-environment deploy access for mini-kanban-board: the IAM role GitHub
+  Actions assumes to deploy/destroy the kanban-app-<env> stack, and the
+  permissions boundary every kanban-app-<env> EC2 instance role must
+  carry. Applied by hand with the admin profile, once per environment
+  (stacks kanban-deploy-dev and kanban-deploy-prod) - see
+  deploy/README.md. Each role can only touch its own environment.
+
+Parameters:
+  Environment:
+    Type: String
+    AllowedValues: [dev, prod]
+    Description: >
+      Environment name. dev and prod share no prefix, so kanban-app-dev-*
+      patterns never match prod resources and vice versa.
+  Hostname:
+    Type: String
+    Description: >
+      The environment's public hostname, lowercase, no trailing dot. The
+      only DNS record this role may change.
+  HostedZoneId:
+    Type: String
+    Description: Route 53 hosted zone ID for lighfe.dev.
+  GitHubOrg:
+    Type: String
+    Default: Lighfe
+  GitHubRepoName:
+    Type: String
+    Default: mini-kanban-board
+  EcrRepositoryName:
+    Type: String
+    Default: kanban
+    Description: The shared ECR repo from the kanban-bootstrap stack.
+
+Conditions:
+  IsDev: !Equals [!Ref Environment, dev]
+
+Resources:
+  # Upper bound on what this environment's app EC2 role can do. The
+  # deploy role may only create or change that role with this boundary
+  # attached (IamGrantWithBoundary below), so it can't escalate through
+  # the instance role and its SSM shell - neither to account admin nor
+  # to the other environment's DB secret.
+  Ec2RoleBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub kanban-app-${Environment}-ec2-boundary
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: EcrPull
+            Effect: Allow
+            Action:
+              - ecr:GetAuthorizationToken
+              - ecr:BatchGetImage
+              - ecr:GetDownloadUrlForLayer
+              - ecr:BatchCheckLayerAvailability
+            Resource: "*"
+          - Sid: DbSecret
+            Effect: Allow
+            Action: secretsmanager:GetSecretValue
+            Resource: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:kanban-app-${Environment}-*
+          # The actions of AmazonSSMManagedInstanceCore, which the EC2 role
+          # attaches for SSM sessions and the deploy's RunCommand push.
+          - Sid: SsmAgent
+            Effect: Allow
+            Action:
+              - ssm:DescribeAssociation
+              - ssm:GetDeployablePatchSnapshotForInstance
+              - ssm:GetDocument
+              - ssm:DescribeDocument
+              - ssm:GetManifest
+              - ssm:GetParameter
+              - ssm:GetParameters
+              - ssm:ListAssociations
+              - ssm:ListInstanceAssociations
+              - ssm:PutInventory
+              - ssm:PutComplianceItems
+              - ssm:PutConfigurePackageResult
+              - ssm:UpdateAssociationStatus
+              - ssm:UpdateInstanceAssociationStatus
+              - ssm:UpdateInstanceInformation
+              - ssmmessages:*
+              - ec2messages:*
+            Resource: "*"
+
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      # Not kanban-app-*: no role pattern below may match the deploy role
+      # itself (self-escalation via PutRolePolicy on its own ARN).
+      RoleName: !Sub kanban-deploy-${Environment}
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                # Jobs that declare `environment:` get an environment
+                # subject instead of the branch ref; the main-only rule
+                # lives on the GitHub Environment. The "@*" parts match
+                # GitHub's numeric org/repo IDs in this repo's sub claim.
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubOrg}@*/${GitHubRepoName}@*:environment:${Environment}
+      Policies:
+        - PolicyName: !Sub kanban-deploy-${Environment}
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: CloudFormation
+                Effect: Allow
+                Action: "cloudformation:*"
+                Resource: !Sub arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/kanban-app-${Environment}/*
+
+              # No resource-level restriction possible, or nothing to
+              # protect (user tags play no part in any condition here).
+              - Sid: Ec2Unscoped
+                Effect: Allow
+                Action:
+                  - ec2:DescribeInstances
+                  - ec2:DescribeSecurityGroups
+                  - ec2:DescribeSubnets
+                  - ec2:DescribeVpcs
+                  - ec2:DescribeImages
+                  - ec2:DescribeNetworkInterfaces
+                  - ec2:DescribeTags
+                  - ec2:CreateSecurityGroup
+                  - ec2:CreateTags
+                  - ec2:DeleteTags
+                Resource: "*"
+
+              # RunInstances is authorized per resource it touches, so
+              # it's split by resource type.
+              - Sid: Ec2RunInstanceSize
+                Effect: Allow
+                Action: ec2:RunInstances
+                Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
+                Condition:
+                  StringEquals:
+                    ec2:InstanceType: t3.micro
+              # Only this environment's security groups: prod's RDS
+              # trusts prod's EC2 security group.
+              - Sid: Ec2RunInstanceSecurityGroup
+                Effect: Allow
+                Action: ec2:RunInstances
+                Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:security-group/*
+                Condition:
+                  StringEquals:
+                    "aws:ResourceTag/aws:cloudformation:stack-name": !Sub kanban-app-${Environment}
+              - Sid: Ec2RunInstanceOther
+                Effect: Allow
+                Action: ec2:RunInstances
+                Resource:
+                  - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:subnet/*
+                  - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:network-interface/*
+                  - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:volume/*
+                  - !Sub arn:aws:ec2:${AWS::Region}::image/*
+
+              # aws:-prefixed tags are set by CloudFormation only and
+              # can't be written by any principal, so this can't be
+              # forged to reach the other environment.
+              - Sid: Ec2OwnStack
+                Effect: Allow
+                Action:
+                  - ec2:TerminateInstances
+                  - ec2:StopInstances
+                  - ec2:StartInstances
+                  - ec2:ModifyInstanceAttribute
+                  - ec2:DeleteSecurityGroup
+                  - ec2:AuthorizeSecurityGroupIngress
+                  - ec2:AuthorizeSecurityGroupEgress
+                  - ec2:RevokeSecurityGroupIngress
+                  - ec2:RevokeSecurityGroupEgress
+                Resource:
+                  - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
+                  - !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:security-group/*
+                Condition:
+                  StringEquals:
+                    "aws:ResourceTag/aws:cloudformation:stack-name": !Sub kanban-app-${Environment}
+              # Authorize/Revoke also touch the (untagged) rule resource;
+              # the group itself is still checked by Ec2OwnStack.
+              - Sid: Ec2SecurityGroupRules
+                Effect: Allow
+                Action:
+                  - ec2:AuthorizeSecurityGroupIngress
+                  - ec2:AuthorizeSecurityGroupEgress
+                  - ec2:RevokeSecurityGroupIngress
+                  - ec2:RevokeSecurityGroupEgress
+                Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:security-group-rule/*
+              # No resizing the stack's own instance. The key is only
+              # present when a request changes the instance type; the
+              # Null check keeps UserData updates (no key) allowed -
+              # StringNotEquals alone is true for a missing key.
+              - Sid: Ec2DenyResize
+                Effect: Deny
+                Action: ec2:ModifyInstanceAttribute
+                Resource: "*"
+                Condition:
+                  "Null":
+                    ec2:Attribute/InstanceType: "false"
+                  StringNotEquals:
+                    ec2:Attribute/InstanceType: t3.micro
+
+              # CloudFormation-generated RDS names start with the
+              # lowercased stack name. No rds:ModifyDBInstance, so the
+              # class can't change after creation.
+              - Sid: RdsCreateInstanceSize
+                Effect: Allow
+                Action: rds:CreateDBInstance
+                Resource: !Sub arn:aws:rds:${AWS::Region}:${AWS::AccountId}:db:kanban-app-${Environment}-*
+                Condition:
+                  StringEquals:
+                    rds:DatabaseClass: db.t4g.micro
+              - Sid: RdsCreateInstanceDependencies
+                Effect: Allow
+                Action: rds:CreateDBInstance
+                Resource:
+                  - !Sub arn:aws:rds:${AWS::Region}:${AWS::AccountId}:subgrp:kanban-app-${Environment}-*
+                  - !Sub arn:aws:rds:${AWS::Region}:${AWS::AccountId}:pg:default.postgres17
+                  - !Sub arn:aws:rds:${AWS::Region}:${AWS::AccountId}:og:default:postgres-17
+              - Sid: RdsOwn
+                Effect: Allow
+                Action:
+                  - rds:DeleteDBInstance
+                  - rds:CreateDBSubnetGroup
+                  - rds:DeleteDBSubnetGroup
+                  - rds:AddTagsToResource
+                  - rds:ListTagsForResource
+                Resource:
+                  - !Sub arn:aws:rds:${AWS::Region}:${AWS::AccountId}:db:kanban-app-${Environment}-*
+                  - !Sub arn:aws:rds:${AWS::Region}:${AWS::AccountId}:subgrp:kanban-app-${Environment}-*
+              - Sid: RdsDescribe
+                Effect: Allow
+                Action:
+                  - rds:DescribeDBInstances
+                  - rds:DescribeDBSubnetGroups
+                Resource: "*"
+
+              # Granting permissions to the app EC2 role requires this
+              # environment's boundary on it.
+              # Put/DeleteRolePermissionsBoundary are not granted, so the
+              # boundary can't be swapped out.
+              - Sid: IamGrantWithBoundary
+                Effect: Allow
+                Action:
+                  - iam:CreateRole
+                  - iam:PutRolePolicy
+                  - iam:AttachRolePolicy
+                Resource: !Sub arn:aws:iam::${AWS::AccountId}:role/kanban-app-${Environment}-ec2
+                Condition:
+                  StringEquals:
+                    iam:PermissionsBoundary: !Ref Ec2RoleBoundary
+              - Sid: Iam
+                Effect: Allow
+                Action:
+                  - iam:DeleteRole
+                  - iam:GetRole
+                  - iam:DeleteRolePolicy
+                  - iam:GetRolePolicy
+                  - iam:TagRole
+                  - iam:DetachRolePolicy
+                  - iam:PassRole
+                  - iam:CreateInstanceProfile
+                  - iam:DeleteInstanceProfile
+                  - iam:GetInstanceProfile
+                  - iam:AddRoleToInstanceProfile
+                  - iam:RemoveRoleFromInstanceProfile
+                Resource:
+                  - !Sub arn:aws:iam::${AWS::AccountId}:role/kanban-app-${Environment}-ec2
+                  - !Sub arn:aws:iam::${AWS::AccountId}:instance-profile/kanban-app-${Environment}-*
+
+              # CloudFormation resolves the AMI's {{resolve:ssm:...}}
+              # reference with the deploying principal's permissions.
+              - Sid: SsmPublicAmiLookup
+                Effect: Allow
+                Action: ssm:GetParameters
+                Resource: !Sub arn:aws:ssm:${AWS::Region}::parameter/aws/service/ami-amazon-linux-latest/*
+
+              - Sid: SecretsManagerScoped
+                Effect: Allow
+                Action:
+                  - secretsmanager:CreateSecret
+                  - secretsmanager:DeleteSecret
+                  - secretsmanager:UpdateSecret
+                  - secretsmanager:DescribeSecret
+                  - secretsmanager:TagResource
+                  # CloudFormation resolves the RDS master password's
+                  # {{resolve:secretsmanager:...}} with this role.
+                  - secretsmanager:GetSecretValue
+                Resource: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:kanban-app-${Environment}-*
+              - Sid: SecretsManagerUnscoped
+                Effect: Allow
+                Action: secretsmanager:GetRandomPassword
+                Resource: "*"
+
+              # SendCommand is authorized on the document and on each
+              # instance separately; the tag condition only fits the
+              # instance.
+              - Sid: SsmRunCommandDocument
+                Effect: Allow
+                Action: ssm:SendCommand
+                Resource: !Sub arn:aws:ssm:${AWS::Region}::document/AWS-RunShellScript
+              - Sid: SsmRunCommandInstance
+                Effect: Allow
+                Action: ssm:SendCommand
+                Resource: !Sub arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/*
+                Condition:
+                  StringEquals:
+                    "ssm:resourceTag/aws:cloudformation:stack-name": !Sub kanban-app-${Environment}
+              - Sid: SsmRunCommandRead
+                Effect: Allow
+                Action:
+                  - ssm:GetCommandInvocation
+                  - ssm:ListCommandInvocations
+                  - ssm:DescribeInstanceInformation
+                Resource: "*"
+
+              - Sid: EcrDescribe
+                Effect: Allow
+                Action:
+                  - ecr:DescribeRepositories
+                  - ecr:DescribeImages
+                Resource: !Sub arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${EcrRepositoryName}
+              # Only dev builds and pushes. Prod deploys images that
+              # already exist; its instances pull with their own role.
+              - !If
+                - IsDev
+                - Sid: EcrAuth
+                  Effect: Allow
+                  Action: ecr:GetAuthorizationToken
+                  Resource: "*"
+                - !Ref AWS::NoValue
+              - !If
+                - IsDev
+                - Sid: EcrPush
+                  Effect: Allow
+                  Action:
+                    - ecr:BatchCheckLayerAvailability
+                    - ecr:InitiateLayerUpload
+                    - ecr:UploadLayerPart
+                    - ecr:CompleteLayerUpload
+                    - ecr:PutImage
+                    - ecr:BatchGetImage
+                    - ecr:GetDownloadUrlForLayer
+                  Resource: !Sub arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${EcrRepositoryName}
+                - !Ref AWS::NoValue
+
+              # Every name, type and action in a change batch must match:
+              # prod's hostname is the parent of dev's, so e.g. a CAA
+              # record at the prod name could block dev's certificate.
+              - Sid: Route53Change
+                Effect: Allow
+                Action: route53:ChangeResourceRecordSets
+                Resource: !Sub arn:aws:route53:::hostedzone/${HostedZoneId}
+                Condition:
+                  ForAllValues:StringEquals:
+                    route53:ChangeResourceRecordSetsNormalizedRecordNames: !Ref Hostname
+                    route53:ChangeResourceRecordSetsRecordTypes: A
+                    route53:ChangeResourceRecordSetsActions: [UPSERT, DELETE]
+              - Sid: Route53Read
+                Effect: Allow
+                Action:
+                  - route53:ListResourceRecordSets
+                  - route53:GetHostedZone
+                Resource: !Sub arn:aws:route53:::hostedzone/${HostedZoneId}
+
+Outputs:
+  DeployRoleArn:
+    Description: Set as secret AWS_DEPLOY_ROLE_ARN of this environment's GitHub Environment.
+    Value: !GetAtt DeployRole.Arn
+  Ec2RoleBoundaryArn:
+    Value: !Ref Ec2RoleBoundary
