@@ -10,6 +10,7 @@
 set -euo pipefail
 
 REGION=eu-central-1
+export AWS_DEFAULT_REGION=$REGION
 PROD_HOST=katban-10x-cat-productivity.lighfe.dev
 DEV_HOST=dev.$PROD_HOST
 ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
@@ -109,8 +110,11 @@ for pair in dev:prod prod:dev; do
                 RevokeSecurityGroupIngress RevokeSecurityGroupEgress; do
     check allowed "$E" "ec2:$action" "$SG" "$(stack_tag "$E")"
     check denied  "$E" "ec2:$action" "$SG" "$(stack_tag "$O")"
-    check allowed "$E" "ec2:$action" "$SGRULE"
   done
+  # Authorize also creates a rule resource; Revoke is only authorized on
+  # the group (the simulator denies Revoke on a rule ARN outright).
+  check allowed "$E" ec2:AuthorizeSecurityGroupIngress "$SGRULE"
+  check allowed "$E" ec2:AuthorizeSecurityGroupEgress "$SGRULE"
   check allowed "$E" ec2:ModifyInstanceAttribute "$INSTANCE" "$(stack_tag "$E")"
   check denied  "$E" ec2:ModifyInstanceAttribute "$INSTANCE" \
     "$(join "$(stack_tag "$E")" "$(ctx ec2:Attribute/InstanceType string t3.large)")"
