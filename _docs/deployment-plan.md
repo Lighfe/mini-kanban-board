@@ -155,7 +155,8 @@ One stack holds EC2 (t3.micro/t4g.micro, free-tier eligible, running
 the existing Docker image) and RDS Postgres (db.t4g.micro, single-AZ,
 20GB gp3), created and destroyed together. Postgres data is lost on
 each teardown — acceptable for now, since this runs ephemeral (most
-sessions under 2 hours, never longer than 3 days), not continuously.
+sessions under 2 hours; auto-destroyed after roughly 72–96 hours at
+most, see step 7), not continuously.
 Splitting into a persistent-RDS stack plus an ephemeral-EC2 stack is a
 possible future evolution if data ever needs to survive between runs,
 but isn't built now.
@@ -204,7 +205,8 @@ role, and the persistent ECR repo, applied once by hand per
 `deploy/cloudformation/stack.yaml` (the ephemeral app stack — EC2, RDS,
 security groups, the DB secret, and the EC2 instance role).
 [.github/workflows/deploy.yml](../.github/workflows/deploy.yml) adds
-`workflow_dispatch` with `deploy`/`destroy`.
+`workflow_dispatch` with `deploy`/`destroy`. Step 7 splits this into dev and prod
+environments; the deploy role now lives in deploy-role.yaml.
 
 One correction from the plan as written above: the domain used is
 `katban-10x-cat-productivity.lighfe.dev`, not a plain project subdomain —
@@ -266,6 +268,35 @@ via `aws cloudformation describe-stacks` returning
 This took far more live iteration than it should have — see
 [deploy-postmortem.md](deploy-postmortem.md) for what went wrong and
 what to do differently next time this shape of work comes up.
+
+### 7. Dev and prod environments — in progress
+
+Two independent copies of the step-6 infrastructure in the same account:
+`dev` (`dev.katban-10x-cat-productivity.lighfe.dev`) and `prod`
+(`katban-10x-cat-productivity.lighfe.dev`), both still ephemeral and
+deployed by hand. Design:
+[docs/superpowers/specs/2026-09-26-dev-prod-environments-design.md](../docs/superpowers/specs/2026-09-26-dev-prod-environments-design.md).
+
+- `kanban-bootstrap` keeps only the shared OIDC provider and ECR repo
+  (tags immutable, last 30 images kept).
+- [deploy/cloudformation/deploy-role.yaml](../deploy/cloudformation/deploy-role.yaml),
+  applied once per environment, holds the deploy role
+  `kanban-deploy-<env>` and the EC2 boundary. Each role is scoped to
+  its own stack, secret, DB, instance, security groups and DNS name,
+  and can only launch `t3.micro` / `db.t4g.micro`. Only dev can push
+  images.
+- `deploy.yml` takes an `environment` input. The image is always built
+  in the dev GitHub Environment and tagged `YYYYMMDD-HHMMSS-shortsha`;
+  the deploy job runs in the target environment.
+- `auto-destroy.yml` runs daily and destroys any environment whose
+  stack is older than 72 hours. Best effort: it fires on the first run
+  after 72 hours, and GitHub can delay scheduled runs or pause them
+  after 60 days without repo activity. The threshold is an open
+  question to revisit.
+- Check the roles with `deploy/verify-iam.sh` (IAM policy simulator).
+
+Next: dev auto-deploy on push and a manual promote-to-prod workflow
+(same image, no rebuild).
 
 ## Out of scope
 

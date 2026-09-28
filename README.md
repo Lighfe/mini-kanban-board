@@ -68,16 +68,19 @@ unset.
 
 ### Live deployment (AWS)
 
-The app also runs on AWS (EC2 + RDS via CloudFormation), triggered
-manually through a GitHub Actions workflow — see
-[deploy/README.md](deploy/README.md) for the full how-to. Short version:
+The app also runs on AWS (EC2 + RDS via CloudFormation) in two
+independent environments, `dev` and `prod`, triggered manually through
+a GitHub Actions workflow — see [deploy/README.md](deploy/README.md)
+for the full how-to. Short version:
 
-    gh workflow run deploy.yml -f action=deploy    # bring the site up
-    gh workflow run deploy.yml -f action=destroy   # tear it down
+    gh workflow run deploy.yml -f action=deploy -f environment=dev    # bring dev up
+    gh workflow run deploy.yml -f action=destroy -f environment=dev   # tear it down
 
-This is a **separate stack from the local `make up`/`make down` one**,
-and unlike the local Docker volume, `destroy` deletes the RDS instance
-with no snapshot — **all board data on the live deployment is lost**
-when you destroy it. The stack is meant to be ephemeral (see
-[_docs/deployment-plan.md](_docs/deployment-plan.md) step 6), so this is
-expected, not a bug.
+Use `environment=prod` for production. These are **separate stacks
+from the local `make up`/`make down` one**, and unlike the local Docker
+volume, `destroy` deletes the RDS instance with no snapshot — **all
+board data in that environment is lost**. A daily job also destroys
+any environment that has been up for more than 72 hours. Both
+environments are meant to be ephemeral (see
+[_docs/deployment-plan.md](_docs/deployment-plan.md) steps 6 and 7), so
+this is expected, not a bug.
