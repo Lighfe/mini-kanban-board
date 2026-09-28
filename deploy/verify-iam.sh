@@ -22,6 +22,14 @@ SG=arn:aws:ec2:$REGION:$ACCOUNT:security-group/sg-0123456789abcdef0
 DOC=arn:aws:ssm:$REGION::document/AWS-RunShellScript
 ZONE=arn:aws:route53:::hostedzone/$ZONE_ID
 ECR=arn:aws:ecr:$REGION:$ACCOUNT:repository/kanban
+SGRULE=arn:aws:ec2:$REGION:$ACCOUNT:security-group-rule/sgr-0123456789abcdef0
+# Other resources RunInstances is authorized on (no conditions expected).
+RUN_OTHER=(
+  "arn:aws:ec2:$REGION::image/ami-0123456789abcdef0"
+  "arn:aws:ec2:$REGION:$ACCOUNT:subnet/subnet-0123456789abcdef0"
+  "arn:aws:ec2:$REGION:$ACCOUNT:network-interface/eni-0123456789abcdef0"
+  "arn:aws:ec2:$REGION:$ACCOUNT:volume/vol-0123456789abcdef0"
+)
 
 host() { if [ "$1" = prod ]; then echo "$PROD_HOST"; else echo "$DEV_HOST"; fi; }
 stack() { echo "arn:aws:cloudformation:$REGION:$ACCOUNT:stack/kanban-app-$1/00000000-0000-0000-0000-000000000000"; }
@@ -29,6 +37,7 @@ secret() { echo "arn:aws:secretsmanager:$REGION:$ACCOUNT:secret:kanban-app-$1-db
 role() { echo "arn:aws:iam::$ACCOUNT:role/kanban-app-$1-ec2"; }
 boundary() { echo "arn:aws:iam::$ACCOUNT:policy/kanban-app-$1-ec2-boundary"; }
 db() { echo "arn:aws:rds:$REGION:$ACCOUNT:db:kanban-app-$1-dbinstance-abc123"; }
+subgrp() { echo "arn:aws:rds:$REGION:$ACCOUNT:subgrp:kanban-app-$1-dbsubnetgroup-abc123"; }
 
 # ctx KEY TYPE VALUE... -> JSON context-entry list with one key
 ctx() {
@@ -79,6 +88,13 @@ for pair in dev:prod prod:dev; do
   check denied  "$E" iam:PassRole "$(role "$O")"
   check allowed "$E" rds:CreateDBInstance "$(db "$E")" "$(ctx rds:DatabaseClass string db.t4g.micro)"
   check denied  "$E" rds:CreateDBInstance "$(db "$E")" "$(ctx rds:DatabaseClass string db.m5.large)"
+  check denied  "$E" rds:CreateDBInstance "$(db "$O")" "$(ctx rds:DatabaseClass string db.t4g.micro)"
+  check allowed "$E" rds:CreateDBInstance "$(subgrp "$E")"
+  check allowed "$E" rds:CreateDBInstance "arn:aws:rds:$REGION:$ACCOUNT:pg:default.postgres17"
+  check allowed "$E" rds:CreateDBInstance "arn:aws:rds:$REGION:$ACCOUNT:og:default:postgres-17"
+  check allowed "$E" rds:CreateDBSubnetGroup "$(subgrp "$E")"
+  check denied  "$E" rds:CreateDBSubnetGroup "$(subgrp "$O")"
+  check allowed "$E" rds:DeleteDBInstance "$(db "$E")"
   check denied  "$E" rds:DeleteDBInstance "$(db "$O")"
   check allowed "$E" ec2:RunInstances "$INSTANCE" "$(ctx ec2:InstanceType string t3.micro)"
   check denied  "$E" ec2:RunInstances "$INSTANCE" "$(ctx ec2:InstanceType string t3.large)"
@@ -86,7 +102,15 @@ for pair in dev:prod prod:dev; do
   check denied  "$E" ec2:RunInstances "$SG" "$(stack_tag "$O")"
   check allowed "$E" ec2:TerminateInstances "$INSTANCE" "$(stack_tag "$E")"
   check denied  "$E" ec2:TerminateInstances "$INSTANCE" "$(stack_tag "$O")"
-  check denied  "$E" ec2:AuthorizeSecurityGroupIngress "$SG" "$(stack_tag "$O")"
+  for res in "${RUN_OTHER[@]}"; do
+    check allowed "$E" ec2:RunInstances "$res"
+  done
+  for action in AuthorizeSecurityGroupIngress AuthorizeSecurityGroupEgress \
+                RevokeSecurityGroupIngress RevokeSecurityGroupEgress; do
+    check allowed "$E" "ec2:$action" "$SG" "$(stack_tag "$E")"
+    check denied  "$E" "ec2:$action" "$SG" "$(stack_tag "$O")"
+    check allowed "$E" "ec2:$action" "$SGRULE"
+  done
   check allowed "$E" ec2:ModifyInstanceAttribute "$INSTANCE" "$(stack_tag "$E")"
   check denied  "$E" ec2:ModifyInstanceAttribute "$INSTANCE" \
     "$(join "$(stack_tag "$E")" "$(ctx ec2:Attribute/InstanceType string t3.large)")"
