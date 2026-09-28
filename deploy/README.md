@@ -35,7 +35,6 @@ roles GitHub Actions uses. Run `aws sso login` first if needed.
    aws cloudformation deploy \
      --template-file deploy/cloudformation/bootstrap.yaml \
      --stack-name kanban-bootstrap \
-     --parameter-overrides HostedZoneId=<zone-id> \
      --capabilities CAPABILITY_NAMED_IAM
    ```
 
