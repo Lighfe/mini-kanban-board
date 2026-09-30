@@ -1,43 +1,46 @@
-name: Deploy
+name: Deploy dev
 
-# Manual only (not push-to-main): usage is short and infrequent. See
-# docs/deployment-plan.md steps 6 and 7.
+# Every commit on main that passes CI is built once and deployed to
+# dev; a dev that is down gets recreated. Manual dispatch deploys
+# main's tip (e.g. to bring dev back without a push). Prod only gets
+# images through promote.yml; destroys are in destroy.yml. See
+# docs/deployment-plan.md step 8.
 on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
-    inputs:
-      action:
-        description: "deploy or destroy"
-        required: true
-        type: choice
-        options: [deploy, destroy]
-      environment:
-        description: "dev or prod"
-        required: true
-        type: choice
-        options: [dev, prod]
 
 permissions:
   id-token: write
   contents: read
 
-# One run per environment at a time - an overlapping deploy/destroy would
-# race on the same stack and DNS record. auto-destroy.yml joins the same
-# groups. Dev and prod don't block each other.
+# One run at a time - an overlapping deploy/destroy would race on the
+# same stack and DNS record. destroy.yml and auto-destroy.yml join the
+# same group.
 concurrency:
-  group: deploy-kanban-app-${{ inputs.environment }}
+  group: deploy-kanban-app-dev
   cancel-in-progress: false
 
 env:
   AWS_REGION: eu-central-1
   ECR_REPOSITORY: kanban
-  STACK_NAME: kanban-app-${{ inputs.environment }}
+  STACK_NAME: kanban-app-dev
+  # The commit CI tested. On workflow_run, GITHUB_SHA is main's tip
+  # when this run started, which can be a newer, untested commit.
+  COMMIT_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
 jobs:
-  # Always runs in the dev GitHub Environment: only the dev deploy role
-  # can push to the shared ECR repo. Prod only runs images that already
-  # exist there (a later promote workflow replaces building here).
   build:
-    if: inputs.action == 'deploy'
+    # branches: [main] matches a PR's head branch too, including a fork
+    # PR from a branch named main; only a green push to this repo's
+    # main deploys.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     environment: dev
     outputs:
@@ -45,6 +48,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ env.COMMIT_SHA }}
           submodules: true
 
       - uses: aws-actions/configure-aws-credentials@v4
@@ -56,18 +60,18 @@ jobs:
       # every run needs a new one, even for the same commit.
       - name: Compute image tag
         id: tag
-        run: echo "tag=$(date -u +%Y%m%d-%H%M%S)-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+        run: echo "tag=$(date -u +%Y%m%d-%H%M%S)-${COMMIT_SHA::7}" >> "$GITHUB_OUTPUT"
 
       - name: Resolve ECR repository URI
         id: ecr
         run: |
-          uri=$(aws ecr describe-repositories --repository-names "${{ env.ECR_REPOSITORY }}" \
+          uri=$(aws ecr describe-repositories --repository-names "$ECR_REPOSITORY" \
             --query "repositories[0].repositoryUri" --output text)
           echo "uri=$uri" >> "$GITHUB_OUTPUT"
 
       - name: Log in to ECR
         run: |
-          aws ecr get-login-password --region "${{ env.AWS_REGION }}" | \
+          aws ecr get-login-password --region "$AWS_REGION" | \
             docker login --username AWS --password-stdin "${{ steps.ecr.outputs.uri }}"
 
       - name: Build and push image
@@ -78,21 +82,13 @@ jobs:
 
   deploy:
     needs: build
-    if: inputs.action == 'deploy'
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
-    env:
-      IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
-      SUBDOMAIN: ${{ vars.SUBDOMAIN }}
+    environment: dev
     steps:
-      - name: Check environment config
-        run: |
-          if [ -z "$SUBDOMAIN" ] || [ -z "$IMAGE_TAG" ]; then
-            echo "::error::SUBDOMAIN (GitHub Environment variable) or the build's image tag is empty"
-            exit 1
-          fi
-
+      # Same commit as the image, so dev's template matches its image.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.COMMIT_SHA }}
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -102,28 +98,24 @@ jobs:
       - uses: ./.github/actions/deploy-env
         with:
           stack-name: ${{ env.STACK_NAME }}
-          hostname: ${{ env.SUBDOMAIN }}
-          image-tag: ${{ env.IMAGE_TAG }}
+          hostname: ${{ vars.SUBDOMAIN }}
+          image-tag: ${{ needs.build.outputs.image_tag }}
           hosted-zone-id: ${{ vars.AWS_HOSTED_ZONE_ID }}
           vpc-id: ${{ vars.AWS_VPC_ID }}
           subnet-ids: ${{ vars.AWS_SUBNET_IDS }}
           region: ${{ env.AWS_REGION }}
           ecr-repository: ${{ env.ECR_REPOSITORY }}
 
-  destroy:
-    if: inputs.action == 'destroy'
-    runs-on: ubuntu-latest
-    environment: ${{ inputs.environment }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - uses: ./.github/actions/destroy-env
-        with:
-          stack-name: ${{ env.STACK_NAME }}
-          hostname: ${{ vars.SUBDOMAIN }}
-          hosted-zone-id: ${{ vars.AWS_HOSTED_ZONE_ID }}
+      - name: Summary
+        env:
+          IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
+        run: |
+          {
+            echo "Deployed \`$IMAGE_TAG\` (commit \`${COMMIT_SHA::7}\`) to dev."
+            echo
+            echo "Promote to prod:"
+            echo
+            echo '```'
+            echo "gh workflow run promote.yml -f image_tag=$IMAGE_TAG"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

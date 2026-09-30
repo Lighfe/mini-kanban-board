@@ -28,8 +28,9 @@ jobs:
         environment: [dev, prod]
     runs-on: ubuntu-latest
     environment: ${{ matrix.environment }}
-    # Same group as deploy.yml, held from the age check through the
-    # deletion: never races a running deploy/destroy.
+    # Same group as deploy.yml, promote.yml and destroy.yml, held from
+    # the age check through the deletion: never races a running
+    # deploy/destroy.
     concurrency:
       group: deploy-kanban-app-${{ matrix.environment }}
       cancel-in-progress: false
