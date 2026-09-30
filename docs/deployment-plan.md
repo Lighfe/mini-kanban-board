@@ -180,6 +180,8 @@ doesn't fit. Instead, a GitHub Actions workflow triggered manually via
 OIDC mechanics, which is the actual learning goal here — GitHub OIDC
 federates to a scoped AWS IAM role with only the deploy/destroy
 permissions needed, no long-lived AWS access keys stored in GitHub.
+Step 8 replaced the manual deploy with dev auto-deploy on green CI
+and a manual, approval-gated promote to prod.
 
 Secrets (`KANBAN_DATABASE_URL` etc.) come from CloudFormation outputs
 or SSM Parameter Store, not hardcoded into the template or GitHub
@@ -312,8 +314,57 @@ redeploy), and the destroy action's DNS step needed its `jq` call
 guarded. The old shared `kanban-app-deploy` role, its boundary and the
 repo-level `AWS_DEPLOY_ROLE_ARN` secret were then removed.
 
-Next: dev auto-deploy on push and a manual promote-to-prod workflow
-(same image, no rebuild).
+Step 8 adds dev auto-deploy and promote to prod.
+
+### 8. Dev auto-deploy and promote to prod — done
+
+Every commit on `main` that passes CI is built once and deployed to
+dev; prod gets an image dev already built, by hand, after an approval.
+Design:
+[docs/superpowers/specs/2026-09-30-dev-autodeploy-promote-design.md](superpowers/specs/2026-09-30-dev-autodeploy-promote-design.md).
+
+- `deploy.yml` runs on `workflow_run` when CI succeeds for a push to
+  `main` (and on manual dispatch), builds from the CI run's commit and
+  deploys dev. A dev that is down is recreated, so while pushes happen
+  dev is up; auto-destroy still removes it after about 72–96 hours.
+  The dev lock is on the deploy job only: at workflow level, failed or
+  cancelled CI runs would enter the queue and replace a pending deploy
+  or destroy (found by the Codex review).
+- `promote.yml` takes an `image_tag`, checks it exists in ECR, waits
+  for a required reviewer in the `prod-approval` GitHub Environment,
+  then deploys it to prod. The approval sits on a separate Environment
+  so prod destroys and auto-destroy don't wait for it.
+- Destroys moved to `destroy.yml`. The deploy steps are a composite
+  action, `.github/actions/deploy-env`, shared by both workflows; the
+  SSM script it renders is identical to the one before the move.
+- No AWS changes; `verify-iam.sh` also checks `ecr:DescribeImages`.
+- Cost alerts: a daily budget (`kanban-daily-usage`, $3/day, usage
+  before credits and tax) and the default cost anomaly subscription
+  lowered to an impact of $5. Both environments up all day cost about
+  $2/day, so neither fires in normal use. The $10 monthly budget was
+  already in alarm for September from the `lighfe.dev` registration.
+
+Verified 2026-09-30, from cold: merging the PR ran CI on `main`, then
+`deploy.yml` from `workflow_run` built `20260930-102725-a4438d3` from
+the merge commit and created dev in about 8 minutes;
+`/api/health` returned 200. Promoting a tag that doesn't exist failed in
+`check` (`ImageNotFoundException`) with no approval request. Promoting
+`20260930-102725-a4438d3` waited for approval, then created prod in
+about 7 minutes with no build step; `/api/health` returned 200 and
+`docker ps` over SSM showed `kanban:20260930-102725-a4438d3`. Merging
+this docs change updated the running dev in place to the new commit.
+Both environments were then destroyed with `destroy.yml`, the prod one
+without an approval request.
+
+Open questions:
+
+- Docs-only pushes also deploy dev, and recreate it if down.
+- GitHub keeps one pending run per concurrency group; a deploy queued
+  after a destroy replaces it.
+- Promote doesn't check that a tag passed dev's health check.
+- Promote uses `main`'s `stack.yaml` with an older image.
+- ECR keeps 30 images; 30 green pushes while prod runs one tag would
+  expire prod's image.
 
 ## Out of scope
 

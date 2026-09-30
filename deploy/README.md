@@ -168,8 +168,17 @@ gh workflow run auto-destroy.yml -f max_age_hours=0
 
 It only reaches `kanban-app-dev` and `kanban-app-prod`, nothing else
 in the account. GitHub can delay scheduled runs and pauses them in a
-public repo after 60 days without activity; the AWS budget alert
-covers that case.
+public repo after 60 days without activity; the cost alerts below
+cover that case.
+
+## Cost alerts
+
+Set up by hand with the admin profile (not in any template):
+
+- Budget `kanban-daily-usage`: $3/day, usage before credits and tax,
+  email when exceeded. Both environments up all day cost about $2/day.
+- Cost anomaly subscription `Default-Services-Subscription`: daily
+  email for anomalies with an impact of $5 or more.
 
 ## Removing the shared layer
 
