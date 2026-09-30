@@ -66,7 +66,10 @@ deploys dev.
 - `deploy` (environment `dev`): checkout, credentials,
   `./.github/actions/deploy-env`. Writes the tag and
   `gh workflow run promote.yml -f image_tag=<tag>` to the job summary.
-- Concurrency group `deploy-kanban-app-dev`, unchanged.
+- Concurrency group `deploy-kanban-app-dev` on the `deploy` job only
+  (from the Codex review): at workflow level every CI completion,
+  including failed or cancelled ones that `build` then skips, would
+  enter the group and replace a pending deploy or destroy.
 - CI's `cancel-in-progress` on `main` means that of several quick
   pushes, older CI runs are cancelled and only the newest deploys.
 

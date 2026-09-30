@@ -16,13 +16,6 @@ permissions:
   id-token: write
   contents: read
 
-# One run at a time - an overlapping deploy/destroy would race on the
-# same stack and DNS record. destroy.yml and auto-destroy.yml join the
-# same group.
-concurrency:
-  group: deploy-kanban-app-dev
-  cancel-in-progress: false
-
 env:
   AWS_REGION: eu-central-1
   ECR_REPOSITORY: kanban
@@ -84,6 +77,16 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     environment: dev
+    # One deploy/destroy of dev at a time - they race on the same stack
+    # and DNS record; destroy.yml and auto-destroy.yml join the group.
+    # Job-level, not workflow-level: GitHub keeps one pending run per
+    # group, and every CI completion (failed, cancelled, fork PR from a
+    # branch named main) would otherwise enter it and replace a pending
+    # deploy or destroy before build's `if` skips it. Build needs no
+    # lock: it only pushes a new immutable tag.
+    concurrency:
+      group: deploy-kanban-app-dev
+      cancel-in-progress: false
     steps:
       # Same commit as the image, so dev's template matches its image.
       - uses: actions/checkout@v4
