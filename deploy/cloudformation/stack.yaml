@@ -4,7 +4,7 @@ Description: >
   (kanban-app-dev, kanban-app-prod): EC2 (app + Caddy containers), RDS
   Postgres, and the security groups/secret tying them together. Created
   and destroyed by the deploy/destroy workflow - see
-  _docs/deployment-plan.md steps 6 and 7. Deployed by the environment's
+  docs/deployment-plan.md steps 6 and 7. Deployed by the environment's
   scoped role from deploy/cloudformation/deploy-role.yaml, never by hand
   with AdminAccess. All names derive from the stack name.
 

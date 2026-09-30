@@ -4,7 +4,7 @@ name: Auto-destroy
 # whose app stack has existed longer than max_age_hours (72 on the daily
 # schedule). Best effort - GitHub can delay or skip scheduled runs, and
 # pauses them in a public repo after 60 days without activity. See
-# _docs/deployment-plan.md step 7.
+# docs/deployment-plan.md step 7.
 on:
   schedule:
     - cron: "17 3 * * *"

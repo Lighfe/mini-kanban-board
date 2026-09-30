@@ -1,14 +1,14 @@
 # Agent Instructions
 
 This repo implements the mini kanban board described in
-[_docs/specs.md](_docs/specs.md) (data model, permissions, behavior) and
-[_docs/frontend_specs.md](_docs/frontend_specs.md) (frontend build and
+[docs/specs.md](docs/specs.md) (data model, permissions, behavior) and
+[docs/frontend_specs.md](docs/frontend_specs.md) (frontend build and
 build target), and deploys per
-[_docs/deployment-plan.md](_docs/deployment-plan.md). These are living
+[docs/deployment-plan.md](docs/deployment-plan.md). These are living
 docs, not frozen — update them when a decision changes, especially
 specs.md when a change affects both frontend and backend.
 
-See [_docs/process.md](_docs/process.md) for how work moves from spec to
+See [docs/process.md](docs/process.md) for how work moves from spec to
 shipped code.
 
 [frontend/](frontend/) is a git submodule tracking a Lovable-managed

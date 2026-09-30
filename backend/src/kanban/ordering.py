@@ -1,4 +1,4 @@
-"""Sortable `order` scheme shared by columns and tasks (see _docs/specs.md § Drag and Drop)."""
+"""Sortable `order` scheme shared by columns and tasks (see docs/specs.md § Drag and Drop)."""
 
 GAP = 1000.0
 MIN_GAP = 1e-6

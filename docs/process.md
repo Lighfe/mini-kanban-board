@@ -41,3 +41,5 @@ driven directly from [specs.md](specs.md),
 [frontend_specs.md](frontend_specs.md), and
 [deployment-plan.md](deployment-plan.md). Finished plans and resolved
 issue logs move to [archive/](archive/) and are not kept current.
+Per-step design specs and implementation plans live in
+[superpowers/](superpowers/); once done they are history too.

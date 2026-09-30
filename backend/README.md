@@ -1,7 +1,7 @@
 # Backend
 
 FastAPI service implementing `../openapi.yaml`, backed by a SQLAlchemy
-database (see `_docs/process.md` for the stage that added it).
+database (see `docs/process.md` for the stage that added it).
 
 ## Setup
 
@@ -66,7 +66,7 @@ which lets cross-site form posts carry the session.
 ## Serving the frontend
 
 In production the backend also serves the built frontend (see
-`_docs/deployment-plan.md`), so the app is same-origin and only one
+`docs/deployment-plan.md`), so the app is same-origin and only one
 container is needed. Set `KANBAN_STATIC_DIR` to the built frontend's
 `dist/client` directory: `/assets/*` is served as static files, and any
 other non-`/api` path returns `index.html` so client-side routes and deep

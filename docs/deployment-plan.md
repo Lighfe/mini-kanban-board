@@ -266,7 +266,7 @@ via `aws cloudformation describe-stacks` returning
 `ValidationError: ... does not exist`.
 
 This took far more live iteration than it should have — see
-[deploy-postmortem.md](deploy-postmortem.md) for what went wrong and
+[archive/deploy-postmortem.md](archive/deploy-postmortem.md) for what went wrong and
 what to do differently next time this shape of work comes up.
 
 ### 7. Dev and prod environments — done
@@ -275,7 +275,7 @@ Two independent copies of the step-6 infrastructure in the same account:
 `dev` (`dev.katban-10x-cat-productivity.lighfe.dev`) and `prod`
 (`katban-10x-cat-productivity.lighfe.dev`), both still ephemeral and
 deployed by hand. Design:
-[docs/superpowers/specs/2026-09-26-dev-prod-environments-design.md](../docs/superpowers/specs/2026-09-26-dev-prod-environments-design.md).
+[docs/superpowers/specs/2026-09-26-dev-prod-environments-design.md](superpowers/specs/2026-09-26-dev-prod-environments-design.md).
 
 - `kanban-bootstrap` keeps only the shared OIDC provider and ECR repo
   (tags immutable, last 30 images kept).

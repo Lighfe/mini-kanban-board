@@ -1,6 +1,6 @@
 # Two-stage build: the frontend is built into static files, then a Python
 # image runs the backend with those files copied in. See
-# _docs/deployment-plan.md (step 3). Build from the repo root; the
+# docs/deployment-plan.md (step 3). Build from the repo root; the
 # frontend/ submodule must be checked out first (git submodule update --init).
 
 # --- Stage 1: build the frontend -------------------------------------------
