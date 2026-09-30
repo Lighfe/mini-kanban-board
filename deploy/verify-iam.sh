@@ -128,6 +128,8 @@ for pair in dev:prod prod:dev; do
 done
 check allowed dev  ecr:PutImage "$ECR"
 check denied  prod ecr:PutImage "$ECR"
+check allowed dev  ecr:DescribeImages "$ECR"
+check allowed prod ecr:DescribeImages "$ECR"
 
 if [ "$failures" -eq 0 ]; then
   echo "All checks passed"
