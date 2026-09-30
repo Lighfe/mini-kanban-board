@@ -27,14 +27,6 @@ jobs:
         working-directory: backend
         run: uv run pytest
 
-  # `bun run lint` is deliberately not gated here yet: it currently fails
-  # on 38 pre-existing prettier/prettier errors in already-committed,
-  # Lovable-managed frontend code (formatting only, no logic) across 9
-  # files, and this repo doesn't edit frontend/ locally (see AGENTS.md).
-  # Once Lovable reformats those files and the submodule pointer is
-  # bumped, add a `bun run lint` step back here as a blocking check —
-  # not `continue-on-error`, since a check that's red forever gets
-  # ignored.
   frontend-test:
     name: Frontend build
     runs-on: ubuntu-latest
@@ -48,6 +40,9 @@ jobs:
       - name: Install dependencies
         working-directory: frontend
         run: bun install --frozen-lockfile
+      - name: Lint
+        working-directory: frontend
+        run: bun run lint
       - name: Build
         working-directory: frontend
         env:

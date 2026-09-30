@@ -121,20 +121,17 @@ Cover the viewer case separately (a viewer link opens the card read-only,
 no save action, no drag) rather than branching it into the same test.
 
 Implemented in [.github/workflows/ci.yml](../.github/workflows/ci.yml):
-`backend-test` (`uv run pytest`) and `frontend-test` (`bun run build`) run
-in parallel; `e2e` waits on both, then runs `docker compose up --build
--d`, polls `/api/health`, and runs the Playwright suite in
+`backend-test` (`uv run pytest`) and `frontend-test` (`bun run lint`, then
+`bun run build`) run in parallel; `e2e` waits on both, then runs `docker
+compose up --build -d`, polls `/api/health`, and runs the Playwright suite in
 [e2e/](../e2e/) — a standalone Node/npm project, independent of the
 frontend submodule's Bun toolchain — against the running container,
 uploading the HTML report as an artifact on failure.
 
-`frontend-test` builds rather than lints: `bun run lint` (the only
-test-like script the frontend submodule exposes — it has no unit-test
-runner) currently fails on 38 pre-existing `prettier/prettier` errors
-(formatting only, no logic) across 9 already-committed files, and this
-repo doesn't edit `frontend/` locally (it's Lovable-managed). Once
-Lovable reformats those files and the submodule pointer is bumped on a
-branch, add `bun run lint` back as a blocking step in `frontend-test`.
+`frontend-test` runs `bun run lint` as a blocking step (the frontend
+submodule has no unit-test runner). The 38 pre-existing `prettier/prettier`
+errors were fixed through Lovable (formatting only); the 9
+`react-refresh/only-export-components` warnings don't fail lint.
 
 Verified locally by running the same sequence outside of CI: `docker
 compose up --build -d`, poll `/api/health`, then `npx playwright test`
