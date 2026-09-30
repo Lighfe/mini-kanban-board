@@ -1,0 +1,90 @@
+name: Promote to prod
+run-name: Promote ${{ inputs.image_tag }} to prod
+
+# Deploys an image tag that a dev deploy already built to prod. No
+# build. Waits for approval in the prod-approval GitHub Environment.
+# See docs/deployment-plan.md step 8.
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag from a dev deploy (YYYYMMDD-HHMMSS-shortsha)"
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: eu-central-1
+  ECR_REPOSITORY: kanban
+  STACK_NAME: kanban-app-prod
+  # Only ever used through env, never interpolated into a script.
+  IMAGE_TAG: ${{ inputs.image_tag }}
+
+jobs:
+  # Fails before anyone is asked to approve.
+  check:
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - name: Check tag format
+        run: |
+          if ! [[ "$IMAGE_TAG" =~ ^[0-9]{8}-[0-9]{6}-[0-9a-f]{7}$ ]]; then
+            echo "::error::image_tag must look like YYYYMMDD-HHMMSS-shortsha"
+            exit 1
+          fi
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Check the image exists
+        run: |
+          if ! pushed=$(aws ecr describe-images --repository-name "$ECR_REPOSITORY" \
+              --image-ids imageTag="$IMAGE_TAG" \
+              --query "imageDetails[0].imagePushedAt" --output text); then
+            echo "::error::no image $IMAGE_TAG in ECR repo $ECR_REPOSITORY"
+            exit 1
+          fi
+          echo "$IMAGE_TAG pushed $pushed" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # prod-approval has a required reviewer and no secrets. A reviewer on
+  # prod itself would also hold auto-destroy's and destroy.yml's prod
+  # jobs.
+  approve:
+    needs: check
+    runs-on: ubuntu-latest
+    environment: prod-approval
+    steps:
+      - run: echo "Approved promoting $IMAGE_TAG to prod"
+
+  deploy:
+    needs: approve
+    runs-on: ubuntu-latest
+    environment: prod
+    # Job-level, not workflow-level: a run waiting for approval must not
+    # hold the group and block a prod destroy or auto-destroy.
+    concurrency:
+      group: deploy-kanban-app-prod
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: ./.github/actions/deploy-env
+        with:
+          stack-name: ${{ env.STACK_NAME }}
+          hostname: ${{ vars.SUBDOMAIN }}
+          image-tag: ${{ env.IMAGE_TAG }}
+          hosted-zone-id: ${{ vars.AWS_HOSTED_ZONE_ID }}
+          vpc-id: ${{ vars.AWS_VPC_ID }}
+          subnet-ids: ${{ vars.AWS_SUBNET_IDS }}
+          region: ${{ env.AWS_REGION }}
+          ecr-repository: ${{ env.ECR_REPOSITORY }}

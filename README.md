@@ -69,18 +69,18 @@ unset.
 ### Live deployment (AWS)
 
 The app also runs on AWS (EC2 + RDS via CloudFormation) in two
-independent environments, `dev` and `prod`, triggered manually through
-a GitHub Actions workflow — see [deploy/README.md](deploy/README.md)
-for the full how-to. Short version:
+independent environments, `dev` and `prod` — see
+[deploy/README.md](deploy/README.md) for the full how-to. Every commit
+on `main` that passes CI is deployed to dev; prod gets an image dev
+already built, after an approval:
 
-    gh workflow run deploy.yml -f action=deploy -f environment=dev    # bring dev up
-    gh workflow run deploy.yml -f action=destroy -f environment=dev   # tear it down
+    gh workflow run promote.yml -f image_tag=<tag>      # dev's tag -> prod
+    gh workflow run destroy.yml -f environment=dev      # tear dev down
 
-Use `environment=prod` for production. These are **separate stacks
-from the local `make up`/`make down` one**, and unlike the local Docker
-volume, `destroy` deletes the RDS instance with no snapshot — **all
+These are **separate stacks from the local `make up`/`make down`
+one**, and unlike the local Docker volume, `destroy` deletes the RDS instance with no snapshot — **all
 board data in that environment is lost**. A daily job also destroys
 any environment that has been up for more than 72 hours. Both
 environments are meant to be ephemeral (see
-[docs/deployment-plan.md](docs/deployment-plan.md) steps 6 and 7), so
+[docs/deployment-plan.md](docs/deployment-plan.md) steps 6–8), so
 this is expected, not a bug.

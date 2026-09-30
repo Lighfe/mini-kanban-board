@@ -1,0 +1,38 @@
+name: Destroy
+
+# Deletes one environment's DNS record and app stack. Database data is
+# lost. No approval, also for prod: the approval gate is on promoting.
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "dev or prod"
+        required: true
+        type: choice
+        options: [dev, prod]
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: deploy-kanban-app-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  destroy:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: eu-central-1
+
+      - uses: ./.github/actions/destroy-env
+        with:
+          stack-name: kanban-app-${{ inputs.environment }}
+          hostname: ${{ vars.SUBDOMAIN }}
+          hosted-zone-id: ${{ vars.AWS_HOSTED_ZONE_ID }}

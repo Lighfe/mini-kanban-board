@@ -1,7 +1,7 @@
 # Deploying
 
-See [docs/deployment-plan.md](../docs/deployment-plan.md) (steps 6
-and 7) for the design. This file is the operational how-to.
+See [docs/deployment-plan.md](../docs/deployment-plan.md) (steps
+6–8) for the design. This file is the operational how-to.
 
 Two environments of the same shape:
 
@@ -63,7 +63,7 @@ roles GitHub Actions uses. Run `aws sso login` first if needed.
    simulator) should print `All checks passed`.
 
 4. Create the GitHub Environments, limited to `main`, with each
-   environment's role and hostname:
+   environment's role and hostname, plus the `prod-approval` gate:
 
    ```bash
    for env in dev prod; do
@@ -77,6 +77,14 @@ roles GitHub Actions uses. Run `aws sso login` first if needed.
    done
    gh variable set SUBDOMAIN --env dev --body dev.katban-10x-cat-productivity.lighfe.dev
    gh variable set SUBDOMAIN --env prod --body katban-10x-cat-productivity.lighfe.dev
+
+   # Approval gate for promote.yml: required reviewer, no secrets.
+   jq -n --argjson id "$(gh api user --jq .id)" \
+     '{deployment_branch_policy:{protected_branches:false,custom_branch_policies:true},
+       reviewers:[{type:"User",id:$id}], prevent_self_review:false}' \
+     | gh api -X PUT repos/Lighfe/mini-kanban-board/environments/prod-approval --input -
+   gh api -X POST repos/Lighfe/mini-kanban-board/environments/prod-approval/deployment-branch-policies \
+     -f name=main -f type=branch
    ```
 
 5. Set the shared, non-secret repo variables:
@@ -107,29 +115,46 @@ roles GitHub Actions uses. Run `aws sso login` first if needed.
 Re-running steps 2–3 is safe (`cloudformation deploy` is idempotent)
 when a template changes.
 
-## Running a deploy or a teardown
+## Deploying dev
 
-From the GitHub UI: **Actions → Deploy → Run workflow**, choose the
-action and the environment. Or from the CLI:
+Every commit on `main` that passes CI is deployed to dev by
+`.github/workflows/deploy.yml`: it builds the image from that commit,
+tags it `YYYYMMDD-HHMMSS-shortsha`, and runs `aws cloudformation deploy`
+against `deploy/cloudformation/stack.yaml`, which creates dev if it is
+down. It then points the hostname at the instance, pushes the compose
+config over SSM, and polls `/api/health` until it returns 200. The run
+summary shows the tag and the promote command.
+
+To deploy `main`'s tip without a push (e.g. after auto-destroy):
 
 ```bash
-gh workflow run deploy.yml -f action=deploy -f environment=dev
-gh workflow run deploy.yml -f action=destroy -f environment=dev
-gh run watch
+gh workflow run deploy.yml
 ```
 
-`deploy` builds the image in the `dev` GitHub Environment (only the dev
-role can push), tags it `YYYYMMDD-HHMMSS-shortsha`, then in the target
-environment runs `aws cloudformation deploy` against
-`deploy/cloudformation/stack.yaml`, points the environment's hostname
-at the instance, pushes the compose config over SSM, and polls
-`/api/health` until it returns 200.
+## Promoting to prod
 
-`destroy` deletes the environment's DNS record and its stack (EC2 +
-RDS). Database data is lost — both environments are ephemeral.
+```bash
+gh workflow run promote.yml -f image_tag=<tag>
+```
 
-Dev and prod runs don't wait for each other; two runs against the same
-environment queue.
+`promote.yml` checks the tag exists in ECR, then waits for approval in
+the `prod-approval` Environment (Actions → the run → **Review
+deployments**), then deploys that image to prod, creating prod if it is
+down. Nothing is built.
+
+## Destroying
+
+```bash
+gh workflow run destroy.yml -f environment=dev   # or prod
+```
+
+Deletes the environment's DNS record and its stack (EC2 + RDS).
+Database data is lost. No approval, also for prod.
+
+Dev and prod don't wait for each other; runs against the same
+environment queue. GitHub keeps one pending run per environment: a
+newer run replaces a pending one, so a queued destroy can be cancelled
+by a deploy queued after it.
 
 ## Auto-destroy
 
