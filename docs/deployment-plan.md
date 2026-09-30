@@ -353,15 +353,30 @@ this docs change updated the running dev in place to the new commit.
 Both environments were then destroyed with `destroy.yml`, the prod one
 without an approval request.
 
-Open questions:
+Open questions, triaged 2026-09-30; all left as is:
 
-- Docs-only pushes also deploy dev, and recreate it if down.
+- Docs-only pushes also deploy dev, and recreate it if down. Costs
+  about $1/day, limited by auto-destroy (best effort);
+  `workflow_run` can't filter by path.
 - GitHub keeps one pending run per concurrency group; a deploy queued
-  after a destroy replaces it.
-- Promote doesn't check that a tag passed dev's health check.
-- Promote uses `main`'s `stack.yaml` with an older image.
-- ECR keeps 30 images; 30 green pushes while prod runs one tag would
-  expire prod's image.
+  after a destroy replaces it. Dev then only stays up longer:
+  auto-destroy retries daily, a cancelled manual destroy shows as
+  cancelled.
+- Promote doesn't check that a tag passed dev's health check. The
+  promote command is only written to the deploy summary after the
+  health check passed, and a reviewer approves every promote.
+- Promote uses `main`'s `stack.yaml` with an older image. Only when
+  promoting an older tag; using the tag's commit instead would roll
+  back prod's infrastructure. `/api/health` doesn't touch the
+  database, so prod's health check only catches an app that doesn't
+  start.
+- ECR keeps 30 images (about 115 MB each). An expired tag doesn't break
+  a running prod: the image is on the instance's disk, and restarts,
+  stop/start and EC2 recovery don't pull. Only a promote or recreate
+  pulls: `promote.yml`'s `check` fails before approval, or, if the tag
+  expires while waiting for approval, the deploy fails. The cost is
+  rollback to tags older than the last 30 builds; raise `countNumber`
+  in `bootstrap.yaml` if that's needed.
 
 ## Out of scope
 
