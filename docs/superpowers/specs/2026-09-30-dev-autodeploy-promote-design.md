@@ -170,5 +170,9 @@ Live, starting with both environments down (checked right before):
 - Template/image skew: promote uses `main`'s `stack.yaml` with an older
   image.
 - ECR keeps the last 30 images. With a build on every green push, 30
-  pushes while prod runs one tag would expire prod's image (a restart
-  would then fail to pull).
+  pushes while prod runs one tag would expire prod's image. (Corrected
+  2026-09-30: a restart doesn't pull, only a promote or recreate does,
+  so this limits rollback, not uptime.)
+
+All five were triaged on 2026-09-30 and left as is; reasons in
+[deployment-plan.md](../../deployment-plan.md) step 8.
