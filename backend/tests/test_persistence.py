@@ -1,4 +1,4 @@
-"""Regression tests for the Persistence stage (_docs/process.md): the
+"""Regression tests for the Persistence stage (docs/process.md): the
 Store must be backed by a real, durable database — reachable through any
 SQLAlchemy URL configured via KANBAN_DATABASE_URL — not an in-process
 dict. These write through one engine/session and read back through a

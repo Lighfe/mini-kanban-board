@@ -69,7 +69,7 @@ def health_check() -> dict[str, str]:
     return {"status": "ok"}
 
 
-# Serves the built frontend (see _docs/deployment-plan.md step 2). Left
+# Serves the built frontend (see docs/deployment-plan.md step 2). Left
 # unset, no static routes are registered, so local dev (no built frontend
 # on disk) and the test suite are unaffected. Registered last so the
 # `/{full_path:path}` catch-all doesn't shadow the `/api/*` routers above.

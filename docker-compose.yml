@@ -1,5 +1,5 @@
 # Local production-shaped stack: the app container from ./Dockerfile plus
-# Postgres. See _docs/deployment-plan.md (step 4). Run with `make up`
+# Postgres. See docs/deployment-plan.md (step 4). Run with `make up`
 # (docker compose up --build) and `make down`.
 services:
   db:

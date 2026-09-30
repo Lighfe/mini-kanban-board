@@ -1,7 +1,7 @@
 name: Deploy
 
 # Manual only (not push-to-main): usage is short and infrequent. See
-# _docs/deployment-plan.md steps 6 and 7.
+# docs/deployment-plan.md steps 6 and 7.
 on:
   workflow_dispatch:
     inputs:

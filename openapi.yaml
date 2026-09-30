@@ -8,16 +8,16 @@ info:
     for this contract until a real HTTP client replaces it.
 
     Every operation below (except `POST /share-links/redeem`, which still
-    requires a signed-in session per `_docs/specs.md`) needs the caller to
+    requires a signed-in session per `docs/specs.md`) needs the caller to
     be an authenticated user AND, for board-scoped operations, a member of
-    that board. See `_docs/specs.md` for the full role model:
+    that board. See `docs/specs.md` for the full role model:
     `owner` > `editor` > `viewer`.
 
     Sign-up/sign-in themselves are out of scope of the frontend's current
-    mocked client (static UI only, see `_docs/frontend_specs.md`) and are
+    mocked client (static UI only, see `docs/frontend_specs.md`) and are
     therefore not modeled here; the backend is expected to establish the
     `session` cookie used by every request below through whatever
-    email/password flow it implements per `_docs/specs.md`.
+    email/password flow it implements per `docs/specs.md`.
 servers:
   - url: /api
 
@@ -693,7 +693,7 @@ components:
       type: apiKey
       in: cookie
       name: session
-      description: Session cookie established by the (out of scope) email/password sign-in flow described in `_docs/specs.md`.
+      description: Session cookie established by the (out of scope) email/password sign-in flow described in `docs/specs.md`.
 
   parameters:
     boardId:

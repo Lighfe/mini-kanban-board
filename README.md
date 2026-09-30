@@ -9,9 +9,9 @@ Zoomcamp](https://aishippingblog.com/p/build-and-ship-a-full-stack-app-with),
 working through a spec-first process: frontend prototype against a mocked
 backend, an API contract extracted from that mock, a real backend
 implementation and integration, then deployment — see
-[_docs/process.md](_docs/process.md).
+[docs/process.md](docs/process.md).
 
-See [_docs/specs.md](_docs/specs.md) for the full design spec and
+See [docs/specs.md](docs/specs.md) for the full design spec and
 [openapi.yaml](openapi.yaml) for the API contract.
 
 ## Stack
@@ -29,7 +29,7 @@ use that instead.
 [frontend/](frontend/) is a git submodule tracking a Lovable-managed
 project ([board-buddy](https://github.com/Lighfe/board-buddy)), originally
 built against a fully mocked backend — see
-[_docs/frontend_specs.md](_docs/frontend_specs.md). Changes to it go
+[docs/frontend_specs.md](docs/frontend_specs.md). Changes to it go
 through Lovable, not local edits. After cloning, run `git submodule
 update --init` to fetch it; `git submodule update --remote frontend`
 pulls the latest changes later.
@@ -48,7 +48,7 @@ running locally, and tests. In short:
 
 A single container: FastAPI serves the static frontend build and the API
 from one origin, with Postgres behind it. See
-[_docs/deployment-plan.md](_docs/deployment-plan.md) for the steps and
+[docs/deployment-plan.md](docs/deployment-plan.md) for the steps and
 current status.
 
 To run the production-shaped stack locally, use the root
@@ -82,5 +82,5 @@ volume, `destroy` deletes the RDS instance with no snapshot — **all
 board data in that environment is lost**. A daily job also destroys
 any environment that has been up for more than 72 hours. Both
 environments are meant to be ephemeral (see
-[_docs/deployment-plan.md](_docs/deployment-plan.md) steps 6 and 7), so
+[docs/deployment-plan.md](docs/deployment-plan.md) steps 6 and 7), so
 this is expected, not a bug.

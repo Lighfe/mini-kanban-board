@@ -1,6 +1,6 @@
 # Deploying
 
-See [_docs/deployment-plan.md](../_docs/deployment-plan.md) (steps 6
+See [docs/deployment-plan.md](../docs/deployment-plan.md) (steps 6
 and 7) for the design. This file is the operational how-to.
 
 Two environments of the same shape:
