@@ -378,7 +378,7 @@ Open questions, triaged 2026-09-30; all left as is:
   rollback to tags older than the last 30 builds; raise `countNumber`
   in `bootstrap.yaml` if that's needed.
 
-### 9. Observability — in progress
+### 9. Observability — done
 
 Dev and prod send OpenTelemetry traces, metrics and logs through a
 collector sidecar to Grafana Cloud (free tier, one stack, separated by
@@ -404,14 +404,28 @@ setup: [observability/README.md](../observability/README.md).
   `increase()` alone saw 0 for a burst on a series that had no errors
   before.
 
+Verified 2026-10-01. Locally: traces, metrics and logs in Grafana;
+requests still answered with the collector stopped; stopping Postgres
+fired the alert, a stopped app left it Normal. Reviews: logs had
+stopped reaching stderr with telemetry on, dashboard rate windows
+were shorter than the 60 s push, and one App events query mixed
+counters; all fixed. Live: dev deployed `20261001-131232-f1e83df`
+from the merge; Grafana Cloud showed its metrics, a move trace with
+its SQL spans, and startup logs, all labelled `dev` and the tag. The
+contact point test email arrived. Dev instance: 391 of 913 MB
+available, app 76 MB, collector 87 of 150 MB, Caddy 20 MB, no
+collector errors. Promoting the same tag created prod; its data was
+labelled `prod`, separate from dev. The Grafana Cloud rule had
+defaulted to the NoData state; set by hand to Normal (README updated).
+After destroying both environments the rule stayed Normal and sent
+nothing.
+
 Open questions:
 
 - How to cause a real 5xx in a deployed environment without a debug
   endpoint. For now: the local test plus a contact point test.
 - The compose config is still duplicated in `UserData` and the SSM
   script.
-- Collector memory on the t3.micro; if tight, lower the
-  `memory_limiter` cap or add swap.
 - After a telemetry gap of more than 5 minutes, a 5xx series that
   reappears with more than 2 errors since process start fires once.
 
