@@ -38,7 +38,9 @@ show up.
 3. Create an access policy with `metrics:write`, `logs:write`,
    `traces:write`, and two tokens: `kanban-dev`, `kanban-prod`.
 4. Dashboards → Import `grafana/dashboards/kanban.json`; pick the
-   stack's Prometheus and Loki data sources.
+   stack's Prometheus and Loki data sources. The Prometheus data
+   source's scrape interval must be 60s (the app's push interval), or
+   the dashboard's `rate()` windows hold one sample and show nothing.
 5. Alerting → Contact points: email to the owner's address.
 6. Alerting → Notification policies: default policy to that contact
    point, grouped by `alertname, deployment_environment_name`, repeat

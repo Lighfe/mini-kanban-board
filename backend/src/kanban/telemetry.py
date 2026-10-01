@@ -72,8 +72,10 @@ def setup_telemetry(app: FastAPI) -> bool:
     # Root for the app's own loggers; "uvicorn" because uvicorn's logging
     # config stops propagation there (it logs unhandled exceptions as
     # uvicorn.error). Access logs stay stdout-only: traces cover them.
+    # basicConfig first: once root has any handler, Python's last-resort
+    # stderr output stops, and logs must still reach `docker logs`.
+    logging.basicConfig(level=logging.INFO)
     logging.getLogger().addHandler(handler)
-    logging.getLogger().setLevel(logging.INFO)
     logging.getLogger("uvicorn").addHandler(handler)
 
     FastAPIInstrumentor.instrument_app(app)

@@ -67,3 +67,21 @@ def test_redeem_without_change_is_not_counted(client, metric_reader):
     again = client.post("/api/share-links/redeem", json={"token": link["token"]}).json()
     assert again["changed"] is False
     assert counter_value(metric_reader, "kanban.share_links.redeemed") == before
+
+
+def test_enabled_telemetry_still_logs_errors_to_stderr():
+    # In a subprocess: enabling telemetry sets process-wide providers.
+    import subprocess
+    import sys
+
+    code = (
+        "import logging, kanban.main; "
+        "logging.getLogger('kanban.locking').error('commit failed marker')"
+    )
+    env = {**__import__("os").environ,
+           "OTEL_EXPORTER_OTLP_ENDPOINT": "http://127.0.0.1:9",
+           "KANBAN_DATABASE_URL": "sqlite:///:memory:"}
+    result = subprocess.run([sys.executable, "-c", code], env=env,
+                            capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stderr
+    assert "commit failed marker" in result.stderr + result.stdout
