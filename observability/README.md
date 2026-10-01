@@ -38,7 +38,8 @@ show up.
 3. Create an access policy with `metrics:write`, `logs:write`,
    `traces:write`, and two tokens: `kanban-dev`, `kanban-prod`.
 4. Dashboards → Import `grafana/dashboards/kanban.json`; pick the
-   stack's Prometheus and Loki data sources. The Prometheus data
+   stack's Prometheus and Loki data sources (Loki: `…-logs`, not
+   `…-alert-state-history`). The Prometheus data
    source's scrape interval must be 60s (the app's push interval), or
    the dashboard's `rate()` windows hold one sample and show nothing.
 5. Alerting → Contact points: email to the owner's address.
@@ -57,7 +58,8 @@ show up.
    ```
 
    threshold `> 2`, evaluated every 1m, pending period 0s, no data →
-   **OK** (a destroyed environment must not alert), summary
+   **Normal** (a destroyed environment must not alert; the default,
+   No Data, notifies), execution error → Error, summary
    annotation as in the file, linked to the Kanban dashboard panel
    "Server errors (5xx) by route".
 
