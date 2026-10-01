@@ -1,0 +1,23 @@
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      # The app pushes metrics every 60 s. Grafana's 15 s default would
+      # make $__rate_interval 60 s, one sample, and rate() empty.
+      timeInterval: 60s
+  - name: Loki
+    uid: loki
+    type: loki
+    url: http://loki:3100
+  - name: Tempo
+    uid: tempo
+    type: tempo
+    url: http://tempo:3200
+    jsonData:
+      tracesToLogsV2:
+        datasourceUid: loki
+        filterByTraceID: true

@@ -4,6 +4,7 @@ from datetime import date, datetime, timezone
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, field_validator
 
+from kanban import telemetry
 from kanban.auth import get_current_user
 from kanban.errors import ApiError
 from kanban.ordering import GAP, append_order, needs_respacing, order_between, respaced_values
@@ -149,6 +150,7 @@ def move_task(
             t["order"] = value
     else:
         task["order"] = order_between(before, after)
+    telemetry.cards_moved.add(1)
     return task
 
 

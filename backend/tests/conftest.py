@@ -58,3 +58,35 @@ def signup(client: TestClient, email: str = "alice@example.com", name: str = "Al
     response = client.post("/api/auth/signup", json={"email": email, "name": name, "password": password})
     assert response.status_code == 201, response.text
     return response.json()
+
+
+from opentelemetry import metrics as otel_metrics
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import InMemoryMetricReader
+
+# One global MeterProvider for the whole session (OTel allows setting it
+# once). kanban.telemetry's counters were created against the API's proxy
+# meter and bind to this provider. setup_telemetry stays disabled in tests.
+_metric_reader = InMemoryMetricReader()
+otel_metrics.set_meter_provider(MeterProvider(metric_readers=[_metric_reader]))
+
+
+@pytest.fixture
+def metric_reader():
+    return _metric_reader
+
+
+def counter_value(reader, name, attributes=None):
+    """Cumulative sum of a counter, optionally only the data point whose
+    attributes equal `attributes` exactly. Tests compare before/after."""
+    data = reader.get_metrics_data()
+    total = 0
+    for rm in data.resource_metrics if data else []:
+        for sm in rm.scope_metrics:
+            for m in sm.metrics:
+                if m.name != name:
+                    continue
+                for point in m.data.data_points:
+                    if attributes is None or dict(point.attributes) == attributes:
+                        total += point.value
+    return total

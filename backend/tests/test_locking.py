@@ -12,6 +12,7 @@ import pytest
 
 import kanban.locking as locking
 from kanban.locking import SerializeRequestsMiddleware
+from tests.conftest import counter_value
 
 
 async def echo_app(scope, receive, send):
@@ -104,7 +105,8 @@ def test_response_is_sent_only_after_commit(monkeypatch):
     assert events == ["commit", "http.response.start", "http.response.body"]
 
 
-def test_commit_failure_returns_500_and_rolls_back(monkeypatch):
+def test_commit_failure_returns_500_and_rolls_back(monkeypatch, metric_reader):
+    before = counter_value(metric_reader, "kanban.commit.failures", {})
     events = []
 
     def failing_commit():
@@ -119,6 +121,7 @@ def test_commit_failure_returns_500_and_rolls_back(monkeypatch):
     asyncio.run(mw(http_scope(), body_receive(b"x"), sink))
     assert sink.status == 500
     assert events == ["commit", "rollback"]
+    assert counter_value(metric_reader, "kanban.commit.failures", {}) == before + 1
 
 
 def test_app_exception_rolls_back_and_propagates(commits):

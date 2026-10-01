@@ -115,7 +115,9 @@ runs:
       # a UserData-only update (e.g. just a new ImageTag on an
       # existing instance), so every deploy re-applies the compose
       # config here instead of relying on UserData for anything past
-      # first-boot bring-up.
+      # first-boot bring-up. That's also why UserData has no
+      # otel-collector: this push runs after every CloudFormation
+      # deploy and adds it seconds after first boot.
       shell: bash
       env:
         STACK_NAME: ${{ inputs.stack-name }}
@@ -130,6 +132,8 @@ runs:
           --query "Stacks[0].Outputs[?OutputKey=='DBSecretArn'].OutputValue" --output text)
         db_endpoint=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" \
           --query "Stacks[0].Outputs[?OutputKey=='DBEndpointAddress'].OutputValue" --output text)
+        env_name=${STACK_NAME#kanban-app-}
+        collector_b64=$(base64 -w0 deploy/otel-collector.yaml)
 
         for i in $(seq 1 24); do
           status=$(aws ssm describe-instance-information \
@@ -161,17 +165,26 @@ runs:
           --query SecretString --output text \
           | python3 -c 'import json,sys; print(json.load(sys.stdin)["password"])')
         DB_URL="postgresql+psycopg://kanban:\${DB_PASSWORD}@${db_endpoint}:5432/kanban"
+        # Grafana Cloud OTLP credentials, read on the instance like the DB
+        # password so they never appear in the SSM command.
+        read -r OTLP_ENDPOINT OTLP_INSTANCE_ID OTLP_TOKEN < <(aws secretsmanager get-secret-value \
+          --region ${REGION} --secret-id ${STACK_NAME}-otlp \
+          --query SecretString --output text \
+          | python3 -c 'import json,sys; s=json.load(sys.stdin); print(s["endpoint"], s["instance_id"], s["token"])')
 
         aws ecr get-login-password --region ${REGION} | \
           docker login --username AWS --password-stdin ${ECR_URI}
 
         mkdir -p /opt/kanban
+        echo ${collector_b64} | base64 -d > /opt/kanban/otel-collector.yaml
         cat > /opt/kanban/docker-compose.yml <<COMPOSE
         services:
           app:
             image: ${ECR_URI}:${IMAGE_TAG}
             environment:
               KANBAN_DATABASE_URL: "\${DB_URL}"
+              OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+              OTEL_RESOURCE_ATTRIBUTES: deployment.environment.name=${env_name},service.version=${IMAGE_TAG}
             restart: unless-stopped
           caddy:
             image: caddy:2
@@ -181,6 +194,17 @@ runs:
             volumes:
               - /opt/kanban/Caddyfile:/etc/caddy/Caddyfile
               - caddy_data:/data
+            restart: unless-stopped
+          otel-collector:
+            image: otel/opentelemetry-collector-contrib:0.161.0
+            command: ["--config=/etc/otelcol/config.yaml"]
+            environment:
+              GRAFANA_OTLP_ENDPOINT: "\${OTLP_ENDPOINT}"
+              GRAFANA_INSTANCE_ID: "\${OTLP_INSTANCE_ID}"
+              GRAFANA_TOKEN: "\${OTLP_TOKEN}"
+            volumes:
+              - /opt/kanban/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+            mem_limit: 150m
             restart: unless-stopped
         volumes:
           caddy_data:

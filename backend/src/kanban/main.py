@@ -9,9 +9,11 @@ from fastapi.staticfiles import StaticFiles
 from kanban.errors import register_exception_handlers
 from kanban.locking import SerializeRequestsMiddleware
 from kanban.routers import auth, boards, columns, members, share_links, tasks, users
+from kanban.telemetry import setup_telemetry
 
 app = FastAPI(title="Mini Kanban Board API")
 register_exception_handlers(app)
+setup_telemetry(app)
 
 # The Store (kanban/store.py) is backed by a single process-wide
 # SQLAlchemy Session (kanban/db.py) shared across requests, and FastAPI

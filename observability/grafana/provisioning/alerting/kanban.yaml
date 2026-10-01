@@ -1,0 +1,57 @@
+# Same rule as in Grafana Cloud (set up by hand, observability/README.md).
+# noDataState OK: a destroyed environment sends nothing and must not alert.
+apiVersion: 1
+contactPoints:
+  - orgId: 1
+    name: local-log
+    receivers:
+      - uid: local-log
+        type: webhook
+        settings:
+          url: http://localhost:9/discard   # local only: look at the alert list instead
+policies:
+  - orgId: 1
+    receiver: local-log
+    group_by: [alertname, deployment_environment_name]
+    repeat_interval: 4h
+groups:
+  - orgId: 1
+    name: kanban
+    folder: kanban
+    interval: 1m
+    rules:
+      - uid: kanban-5xx
+        title: Kanban server errors
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              instant: true
+              # increase() needs two samples, so a 5xx series' first
+              # sample (all errors of a burst within one export interval)
+              # would count as 0. Series newer than 5m count in full.
+              expr: >-
+                sum by (deployment_environment_name, service_version) (
+                (http_server_request_duration_seconds_count{http_response_status_code=~"5.."}
+                unless http_server_request_duration_seconds_count{http_response_status_code=~"5.."} offset 5m)
+                or increase(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m]))
+          - refId: C
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [2] }
+        noDataState: OK
+        execErrState: Error
+        for: 0s
+        annotations:
+          summary: >-
+            {{ $labels.deployment_environment_name }}: server errors in the last 5 minutes
+            (version {{ $labels.service_version }})
+          __dashboardUid__: kanban
+          __panelId__: "3"

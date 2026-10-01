@@ -1,0 +1,67 @@
+{
+  "uid": "kanban",
+  "title": "Kanban",
+  "schemaVersion": 39,
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "30s",
+  "templating": {
+    "list": [
+      { "name": "ds_prom", "label": "Metrics", "type": "datasource", "query": "prometheus" },
+      { "name": "ds_loki", "label": "Logs", "type": "datasource", "query": "loki" },
+      {
+        "name": "env", "label": "Environment", "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+        "query": "label_values(http_server_request_duration_seconds_count, deployment_environment_name)",
+        "includeAll": true, "multi": true, "refresh": 2
+      },
+      {
+        "name": "version", "label": "Version", "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+        "query": "label_values(http_server_request_duration_seconds_count{deployment_environment_name=~\"$env\"}, service_version)",
+        "includeAll": true, "multi": true, "refresh": 2
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1, "type": "timeseries", "title": "Requests/s by route",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+      "targets": [{ "refId": "A", "legendFormat": "{{http_route}}",
+        "expr": "sum by (http_route) (rate(http_server_request_duration_seconds_count{deployment_environment_name=~\"$env\", service_version=~\"$version\"}[$__rate_interval]))" }]
+    },
+    {
+      "id": 2, "type": "timeseries", "title": "p95 latency",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+      "targets": [{ "refId": "A", "legendFormat": "p95",
+        "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{deployment_environment_name=~\"$env\", service_version=~\"$version\"}[$__rate_interval])))" }]
+    },
+    {
+      "id": 3, "type": "timeseries", "title": "Server errors (5xx) by route",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+      "targets": [{ "refId": "A", "legendFormat": "{{deployment_environment_name}} {{http_route}} {{http_response_status_code}}",
+        "expr": "sum by (deployment_environment_name, http_route, http_response_status_code) ((http_server_request_duration_seconds_count{deployment_environment_name=~\"$env\", service_version=~\"$version\", http_response_status_code=~\"5..\"} unless http_server_request_duration_seconds_count{deployment_environment_name=~\"$env\", service_version=~\"$version\", http_response_status_code=~\"5..\"} offset $__rate_interval) or increase(http_server_request_duration_seconds_count{deployment_environment_name=~\"$env\", service_version=~\"$version\", http_response_status_code=~\"5..\"}[$__rate_interval]))" }]
+    },
+    {
+      "id": 4, "type": "timeseries", "title": "App events",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
+      "targets": [
+        { "refId": "A", "legendFormat": "boards created", "expr": "sum(increase(kanban_boards_created_total{deployment_environment_name=~\"$env\", service_version=~\"$version\"}[$__rate_interval]))" },
+        { "refId": "B", "legendFormat": "cards moved", "expr": "sum(increase(kanban_cards_moved_total{deployment_environment_name=~\"$env\", service_version=~\"$version\"}[$__rate_interval]))" },
+        { "refId": "C", "legendFormat": "share links redeemed", "expr": "sum(increase(kanban_share_links_redeemed_total{deployment_environment_name=~\"$env\", service_version=~\"$version\"}[$__rate_interval]))" },
+        { "refId": "D", "legendFormat": "commit failures", "expr": "sum(increase(kanban_commit_failures_total{deployment_environment_name=~\"$env\", service_version=~\"$version\"}[$__rate_interval]))" }
+      ]
+    },
+    {
+      "id": 5, "type": "logs", "title": "Warnings and errors",
+      "gridPos": { "x": 0, "y": 16, "w": 24, "h": 10 },
+      "datasource": { "type": "loki", "uid": "${ds_loki}" },
+      "targets": [{ "refId": "A",
+        "expr": "{service_name=\"kanban\"} | deployment_environment_name=~\"$env\" | severity_text=~\"WARN.*|ERROR|CRITICAL\"" }]
+    }
+  ]
+}

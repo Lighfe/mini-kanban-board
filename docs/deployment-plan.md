@@ -378,6 +378,43 @@ Open questions, triaged 2026-09-30; all left as is:
   rollback to tags older than the last 30 builds; raise `countNumber`
   in `bootstrap.yaml` if that's needed.
 
+### 9. Observability — in progress
+
+Dev and prod send OpenTelemetry traces, metrics and logs through a
+collector sidecar to Grafana Cloud (free tier, one stack, separated by
+`deployment.environment.name`); one alert emails on server 5xx. The
+course's self-hosted stack (Prometheus, Loki, Tempo, Grafana) runs
+locally with `make up-obs`. Design:
+[docs/superpowers/specs/2026-10-01-observability-design.md](superpowers/specs/2026-10-01-observability-design.md);
+setup: [observability/README.md](../observability/README.md).
+
+- Backend: `kanban/telemetry.py`, off unless
+  `OTEL_EXPORTER_OTLP_ENDPOINT` is set; four app counters.
+- Collector: `deploy/otel-collector.yaml` (Grafana Cloud) and
+  `observability/otel-collector.yaml` (local); both copy environment
+  and version onto metric data points; CI validates both.
+- Deploy: the SSM push in `deploy-env` adds the collector and reads
+  `kanban-app-<env>-otlp` on the instance. Unlike the spec, `UserData`
+  has no collector: the SSM push runs after every CloudFormation
+  deploy, and this avoids a third copy of the compose config.
+- IAM: the instance role may read its own `-otlp` secret; boundary
+  and deploy roles unchanged.
+- Alert: more than 2 server 5xx in 5 minutes per environment, no data
+  → OK. The query counts 5xx series younger than 5 minutes in full:
+  `increase()` alone saw 0 for a burst on a series that had no errors
+  before.
+
+Open questions:
+
+- How to cause a real 5xx in a deployed environment without a debug
+  endpoint. For now: the local test plus a contact point test.
+- The compose config is still duplicated in `UserData` and the SSM
+  script.
+- Collector memory on the t3.micro; if tight, lower the
+  `memory_limiter` cap or add swap.
+- After a telemetry gap of more than 5 minutes, a 5xx series that
+  reappears with more than 2 errors since process start fires once.
+
 ## Out of scope
 
 Multiple workers or horizontal scaling (blocked by the request lock),

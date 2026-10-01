@@ -112,6 +112,11 @@ roles GitHub Actions uses. Run `aws sso login` first if needed.
    aws iam create-service-linked-role --aws-service-name rds.amazonaws.com
    ```
 
+7. Create the Grafana Cloud OTLP secrets `kanban-app-dev-otlp` and
+   `kanban-app-prod-otlp`, see
+   [observability/README.md](../observability/README.md#secrets-once-per-environment-admin-profile).
+   Without its secret, an environment's deploy fails at the SSM step.
+
 Re-running steps 2–3 is safe (`cloudformation deploy` is idempotent)
 when a template changes.
 

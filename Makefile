@@ -1,5 +1,5 @@
 # Repo-level shortcuts. Backend-only targets live in backend/Makefile.
-.PHONY: build up down test test-pg aws-login
+.PHONY: build up down up-obs down-obs test test-pg aws-login
 
 IMAGE ?= mini-kanban
 # The `db` service in docker-compose.yml, reached via its published port.
@@ -14,6 +14,15 @@ up:
 
 down:
 	docker compose down
+
+OBS = -f docker-compose.yml -f observability/docker-compose.yml
+
+# The app plus the local observability stack (observability/README.md).
+up-obs:
+	docker compose $(OBS) up --build
+
+down-obs:
+	docker compose $(OBS) down
 
 test:
 	$(MAKE) -C backend test

@@ -87,3 +87,17 @@ Then open the backend's port in a browser and refresh a deep link (e.g.
 ## Test
 
     make test
+
+## Telemetry
+
+OpenTelemetry setup is in `kanban/telemetry.py`. It's off unless
+`OTEL_EXPORTER_OTLP_ENDPOINT` is set, so tests and plain runs export
+nothing. When set, traces (FastAPI and SQLAlchemy), metrics and logs
+(Python `logging`) go there over OTLP/HTTP. Other configuration uses
+the standard variables: `OTEL_SERVICE_NAME` (default `kanban`) and
+`OTEL_RESOURCE_ATTRIBUTES`
+(`deployment.environment.name=<env>,service.version=<image tag>`).
+
+App counters: `kanban.commit.failures`, `kanban.boards.created`,
+`kanban.cards.moved`, `kanban.share_links.redeemed` (label `role`).
+Locally: `make up-obs` from the repo root (`observability/README.md`).
