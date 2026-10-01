@@ -1,0 +1,6 @@
+# Metrics arrive by OTLP push (--web.enable-otlp-receiver); nothing to scrape.
+otlp:
+  translation_strategy: UnderscoreEscapingWithSuffixes
+storage:
+  tsdb:
+    out_of_order_time_window: 30m

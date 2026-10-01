@@ -1,0 +1,49 @@
+# Local collector: app -> OTLP -> Prometheus (metrics), Loki (logs),
+# Tempo (traces). deploy/otel-collector.yaml is the deployed twin, with
+# Grafana Cloud as the only exporter; keep the processors in sync.
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 100
+    spike_limit_mib: 20
+  # Copy who-sent-it onto every metric data point, so PromQL can filter
+  # by environment and version whether or not the backend promotes
+  # resource attributes to labels.
+  transform/promote:
+    metric_statements:
+      - context: datapoint
+        statements:
+          - set(attributes["deployment.environment.name"], resource.attributes["deployment.environment.name"])
+          - set(attributes["service.version"], resource.attributes["service.version"])
+  batch: {}
+
+exporters:
+  otlphttp/prometheus:
+    endpoint: http://prometheus:9090/api/v1/otlp
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/tempo]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/promote, batch]
+      exporters: [otlphttp/prometheus]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp/loki]
