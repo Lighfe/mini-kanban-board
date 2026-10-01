@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: kanban
+    folder: kanban
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards
