@@ -1,0 +1,51 @@
+# Deployed collector (docs/deployment-plan.md step 9): app -> OTLP ->
+# Grafana Cloud. The deploy-env action ships this file to the instance;
+# the GRAFANA_* variables come from the kanban-app-<env>-otlp secret.
+# observability/otel-collector.yaml is the local twin; keep the
+# processors in sync.
+extensions:
+  basicauth/grafana:
+    client_auth:
+      username: ${env:GRAFANA_INSTANCE_ID}
+      password: ${env:GRAFANA_TOKEN}
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 100
+    spike_limit_mib: 20
+  transform/promote:
+    metric_statements:
+      - context: datapoint
+        statements:
+          - set(attributes["deployment.environment.name"], resource.attributes["deployment.environment.name"])
+          - set(attributes["service.version"], resource.attributes["service.version"])
+  batch: {}
+
+exporters:
+  otlphttp/grafana:
+    endpoint: ${env:GRAFANA_OTLP_ENDPOINT}
+    auth:
+      authenticator: basicauth/grafana
+
+service:
+  extensions: [basicauth/grafana]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp/grafana]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/promote, batch]
+      exporters: [otlphttp/grafana]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp/grafana]

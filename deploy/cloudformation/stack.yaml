@@ -148,6 +148,14 @@ Resources:
                 Effect: Allow
                 Action: secretsmanager:GetSecretValue
                 Resource: !Ref DbSecret
+              # Grafana Cloud OTLP credentials for the collector, created
+              # by hand outside this stack (observability/README.md) so
+              # they survive destroys. The EC2 boundary already allows
+              # kanban-app-<env>-* secrets.
+              - Sid: OtlpCredentials
+                Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${AWS::StackName}-otlp-*
 
   Ec2InstanceProfile:
     Type: AWS::IAM::InstanceProfile

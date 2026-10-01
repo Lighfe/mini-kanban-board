@@ -27,6 +27,21 @@ jobs:
         working-directory: backend
         run: uv run pytest
 
+  collector-config:
+    name: Collector configs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate collector configs
+        run: |
+          for f in deploy/otel-collector.yaml observability/otel-collector.yaml; do
+            echo "== $f"
+            docker run --rm -v "$PWD/$f:/cfg.yaml:ro" \
+              -e GRAFANA_OTLP_ENDPOINT=https://example.invalid/otlp \
+              -e GRAFANA_INSTANCE_ID=0 -e GRAFANA_TOKEN=x \
+              otel/opentelemetry-collector-contrib:0.161.0 validate --config=/cfg.yaml
+          done
+
   frontend-test:
     name: Frontend build
     runs-on: ubuntu-latest
