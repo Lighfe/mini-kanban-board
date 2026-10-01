@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 
+from kanban import telemetry
 from kanban.db import session as db_session
 
 logger = logging.getLogger(__name__)
@@ -114,6 +115,7 @@ class SerializeRequestsMiddleware:
                 db_session.commit()
             except Exception:
                 logger.exception("commit failed; rolled back and answered 500")
+                telemetry.commit_failures.add(1)
                 db_session.rollback()
                 response_messages = _json_response(500, "Could not save changes")
 

@@ -4,6 +4,7 @@ import uuid
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
+from kanban import telemetry
 from kanban.auth import get_current_user
 from kanban.errors import ApiError
 from kanban.permissions import ROLE_RANK, require_role_or_403
@@ -78,4 +79,5 @@ def redeem_share_link(body: RedeemBody, current_user: dict = Depends(get_current
             "userId": current_user["id"],
             "role": link["role"],
         }
+    telemetry.share_links_redeemed.add(1, {"role": link["role"]})
     return {"boardId": board["id"], "boardName": board["name"], "role": link["role"], "changed": True}

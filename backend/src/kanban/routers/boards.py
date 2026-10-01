@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, field_validator
 
+from kanban import telemetry
 from kanban.auth import get_current_user, seed_default_board
 from kanban.errors import ApiError
 from kanban.permissions import get_member_or_404_403, require_role_or_403
@@ -40,6 +41,7 @@ def list_boards(current_user: dict = Depends(get_current_user)) -> list[dict]:
 @router.post("", status_code=201, response_model=Board)
 def create_board(body: NameBody, current_user: dict = Depends(get_current_user)) -> dict:
     board_id = seed_default_board(current_user["id"], body.name)
+    telemetry.boards_created.add(1)
     return store.boards[board_id]
 
 
