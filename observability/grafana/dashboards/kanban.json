@@ -49,8 +49,12 @@
       "id": 4, "type": "timeseries", "title": "App events",
       "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "${ds_prom}" },
-      "targets": [{ "refId": "A", "legendFormat": "{{__name__}}",
-        "expr": "sum by (__name__) (increase({__name__=~\"kanban_.+_total\", deployment_environment_name=~\"$env\", service_version=~\"$version\"}[$__rate_interval]))" }]
+      "targets": [
+        { "refId": "A", "legendFormat": "boards created", "expr": "sum(increase(kanban_boards_created_total{deployment_environment_name=~\"$env\", service_version=~\"$version\"}[$__rate_interval]))" },
+        { "refId": "B", "legendFormat": "cards moved", "expr": "sum(increase(kanban_cards_moved_total{deployment_environment_name=~\"$env\", service_version=~\"$version\"}[$__rate_interval]))" },
+        { "refId": "C", "legendFormat": "share links redeemed", "expr": "sum(increase(kanban_share_links_redeemed_total{deployment_environment_name=~\"$env\", service_version=~\"$version\"}[$__rate_interval]))" },
+        { "refId": "D", "legendFormat": "commit failures", "expr": "sum(increase(kanban_commit_failures_total{deployment_environment_name=~\"$env\", service_version=~\"$version\"}[$__rate_interval]))" }
+      ]
     },
     {
       "id": 5, "type": "logs", "title": "Warnings and errors",
